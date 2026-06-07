@@ -90,6 +90,24 @@ def get_setting(name):
 _initialize_config()
 
 
+def log_info(message, *args):
+	try:
+		import logHandler
+
+		logHandler.log.info(message, *args)
+	except Exception:
+		pass
+
+
+def log_exception(message):
+	try:
+		import logHandler
+
+		logHandler.log.error("%s\n%s", message, traceback.format_exc())
+	except Exception:
+		pass
+
+
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	scriptCategory = _("Folder Text Finder")
 
@@ -108,11 +126,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gesture="kb:NVDA+alt+f",
 	)
 	def script_openFolderTextFinder(self, gesture):
-		folder = get_current_explorer_folder()
+		ui.message(_("Folder Text Finder starting."))
+		log_info("Folder Text Finder command started.")
+		try:
+			folder = get_current_explorer_folder()
+		except Exception:
+			log_exception("Folder Text Finder folder detection crashed.")
+			ui.message(_("Folder Text Finder could not detect the folder."))
+			return
 		if not folder:
 			log_folder_detection_diagnostics()
 			ui.message(_("Open a folder or focus a file before using Folder Text Finder."))
 			return
+		log_info("Folder Text Finder opening dialog for folder: %s", folder)
 		wx.CallAfter(FolderTextFinderDialog, gui.mainFrame, folder)
 
 
