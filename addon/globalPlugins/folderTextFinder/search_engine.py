@@ -64,7 +64,7 @@ class SearchStatistics:
 			"",
 			f"Search folder: {self.folder}",
 			f"Include subfolders: {'yes' if self.options.include_subfolders else 'no'}",
-			f"Search mode: {'whole word' if self.options.whole_word else 'exact fragment'}",
+			f"Search mode: {'exact whole word' if self.options.whole_word else 'exact fragment'}",
 			f"Case sensitive: {'yes' if self.options.case_sensitive else 'no'}",
 			f"Search text length: {len(self.options.query)}",
 			f"Matches found: {self.matches_found}",
@@ -147,8 +147,7 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 		search_query = query
 
 	if options.whole_word:
-		pattern = re.compile(r"(?<!\w)" + re.escape(search_query) + r"(?!\w)")
-		spans = (match.span() for match in pattern.finditer(search_text))
+		spans = exact_whole_word_spans(search_text, search_query)
 	else:
 		spans = literal_spans(search_text, search_query)
 
@@ -156,6 +155,18 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 		line, column = line_column_for_offset(text, start)
 		page = extracted.page_for_offset(start) if options.report_page_numbers else None
 		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page)
+
+
+def exact_whole_word_spans(text: str, query: str):
+	for start, end in literal_spans(text, query):
+		before = text[start - 1] if start > 0 else ""
+		after = text[end] if end < len(text) else ""
+		if not is_word_character(before) and not is_word_character(after):
+			yield start, end
+
+
+def is_word_character(character: str) -> bool:
+	return bool(character) and (character.isalnum() or character in "_'\u2019")
 
 
 def literal_spans(text: str, query: str):
@@ -182,4 +193,5 @@ def preview_for_span(text: str, start: int, end: int, context: int = 80) -> str:
 	preview_end = min(len(text), end + context)
 	preview = text[preview_start:preview_end]
 	return preview.replace("\r", "<carriage return>").replace("\n", "<newline>").replace("\t", "<tab>")
+
 

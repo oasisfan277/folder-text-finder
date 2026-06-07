@@ -1,9 +1,10 @@
-﻿# Changelog
+# Changelog
 
 ## 0.1.0
 
 - Initial project scaffold.
-- Added local search engine with exact fragment and whole-word matching.
+- Added local search engine with exact fragment and exact whole-word matching.
+- Exact whole-word matching no longer matches apostrophe suffixes such as sister's.
 - Added local extractors for plain text, HTML, DOCX, RTF, ODT, and optional text-based PDF extraction.
 - Added accessible NVDA global plugin dialog scaffold.
 - Added NVDA settings for direct tab/newline entry, invisible character announcements, and page number reporting.
@@ -13,6 +14,7 @@
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.
+
 
 
 

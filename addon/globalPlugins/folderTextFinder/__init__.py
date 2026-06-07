@@ -374,7 +374,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.previewCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY)
 		mainSizer.Add(self.previewCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-		self.wholeWordCtrl = wx.CheckBox(self, label=_("&Whole word search"))
+		self.wholeWordCtrl = wx.CheckBox(self, label=_("Exact &whole word search"))
 		self.caseCtrl = wx.CheckBox(self, label=_("&Case sensitive"))
 		self.subfoldersCtrl = wx.CheckBox(self, label=_("Include &subfolders"))
 		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report &page numbers when available"))

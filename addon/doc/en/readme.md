@@ -52,3 +52,4 @@ Image-only or scanned PDFs are not OCR'd.
 After a search, use Search Statistics to review what was searched, skipped, unsupported, unreadable, or found to contain no extractable text.
 
 
+

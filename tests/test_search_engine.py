@@ -96,3 +96,17 @@ def test_format_result_for_list_contains_location_and_preview():
 	assert "book.txt" in formatted
 	assert "Line 3, Column 5" in formatted
 	assert "matching text" in formatted
+
+
+def test_exact_whole_word_search_does_not_match_apostrophe_suffix():
+	text = "sister sister's sisterhood"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="sister", whole_word=True)))
+	assert len(results) == 1
+	assert results[0].column == 1
+
+
+def test_exact_whole_word_search_does_not_match_curly_apostrophe_suffix():
+	text = "sister sister\u2019s sisterhood"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="sister", whole_word=True)))
+	assert len(results) == 1
+	assert results[0].column == 1

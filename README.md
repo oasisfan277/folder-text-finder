@@ -2,7 +2,7 @@
 
 Folder Text Finder is an NVDA add-on for searching files containing text in the current folder, a selected folder, or the parent folder of a focused file.
 
-The add-on is designed for precise local searching. It can search for exact fragments, whole words, punctuation, repeated spaces, tabs, and line breaks. Results are presented in an accessible dialog with file, line, column, preview text, and page number when reliable page information is available.
+The add-on is designed for precise local searching. It can search for exact fragments, exact whole words, punctuation, repeated spaces, tabs, and line breaks. Results are presented in an accessible dialog with file, line, column, preview text, and page number when reliable page information is available.
 
 ## Privacy
 
@@ -41,7 +41,7 @@ Image-only or scanned PDFs are not OCR'd.
 ## Search Modes
 
 - Exact fragment search
-- Whole-word search
+- Exact whole-word search
 - Case-sensitive or case-insensitive search
 - Include subfolders
 - File type filtering
@@ -77,6 +77,7 @@ python scripts/package_addon.py
 ```
 
 The package is written to the `dist` folder.
+
 
 
 
