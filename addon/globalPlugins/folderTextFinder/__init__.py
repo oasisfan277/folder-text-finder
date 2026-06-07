@@ -1,6 +1,7 @@
 import os
 import subprocess
 import threading
+import traceback
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -109,6 +110,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_openFolderTextFinder(self, gesture):
 		folder = get_current_explorer_folder()
 		if not folder:
+			log_folder_detection_diagnostics()
 			ui.message(_("Open a folder or focus a file before using Folder Text Finder."))
 			return
 		wx.CallAfter(FolderTextFinderDialog, gui.mainFrame, folder)
@@ -167,12 +169,11 @@ def get_folder_from_focused_object():
 def get_foreground_explorer_folder_from_shell():
 	try:
 		import ctypes
-		import win32com.client
 
 		GA_ROOT = 2
 		foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
 		foreground_root = ctypes.windll.user32.GetAncestor(foreground_hwnd, GA_ROOT) or foreground_hwnd
-		shell = win32com.client.Dispatch("Shell.Application")
+		shell = get_shell_application()
 		candidate_folders = []
 		selected_folders = []
 		for window in shell.Windows():
@@ -207,6 +208,20 @@ def get_selected_folder_from_shell_window(window):
 		return None
 
 
+def get_shell_application():
+	try:
+		import comtypes.client
+
+		return comtypes.client.CreateObject("Shell.Application", dynamic=True)
+	except Exception:
+		try:
+			import win32com.client
+
+			return win32com.client.Dispatch("Shell.Application")
+		except Exception:
+			raise
+
+
 def path_from_shell_location_url(location_url):
 	if not location_url:
 		return None
@@ -229,6 +244,64 @@ def normalize_search_folder(candidate):
 	if os.path.isfile(path):
 		return os.path.dirname(path)
 	return None
+
+
+
+def log_folder_detection_diagnostics():
+	try:
+		import api
+		import logHandler
+
+		log = logHandler.log
+		log.info("Folder Text Finder folder detection failed. Starting diagnostics.")
+		for label, obj in (("focus", api.getFocusObject()), ("foreground", api.getForegroundObject()), ("navigator", api.getNavigatorObject())):
+			log.info("Folder Text Finder %s object chain:", label)
+			seen = set()
+			depth = 0
+			while obj and id(obj) not in seen and depth < 8:
+				seen.add(id(obj))
+				log.info(
+					"  depth=%s class=%r role=%r name=%r value=%r location=%r appModule=%r",
+					depth,
+					getattr(obj, "windowClassName", None),
+					getattr(obj, "role", None),
+					getattr(obj, "name", None),
+					getattr(obj, "value", None),
+					getattr(obj, "location", None),
+					getattr(getattr(obj, "appModule", None), "appName", None),
+				)
+				obj = getattr(obj, "parent", None)
+				depth += 1
+		log_shell_window_diagnostics(log)
+	except Exception:
+		try:
+			import logHandler
+			logHandler.log.error("Folder Text Finder diagnostics failed:\n%s", traceback.format_exc())
+		except Exception:
+			pass
+
+
+def log_shell_window_diagnostics(log):
+	try:
+		import ctypes
+
+		GA_ROOT = 2
+		foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
+		foreground_root = ctypes.windll.user32.GetAncestor(foreground_hwnd, GA_ROOT) or foreground_hwnd
+		log.info("Folder Text Finder foreground hwnd=%r root=%r", foreground_hwnd, foreground_root)
+		shell = get_shell_application()
+		for index, window in enumerate(shell.Windows()):
+			try:
+				log.info("Folder Text Finder shell window %s hwnd=%r url=%r normalized=%r", index, int(window.HWND), window.LocationURL, normalize_search_folder(window.LocationURL))
+				selected_items = window.Document.SelectedItems()
+				log.info("Folder Text Finder shell window %s selected count=%r", index, selected_items.Count)
+				for item_index in range(selected_items.Count):
+					item = selected_items.Item(item_index)
+					log.info("Folder Text Finder selected item %s path=%r normalized=%r", item_index, item.Path, normalize_search_folder(item.Path))
+			except Exception:
+				log.info("Folder Text Finder shell window %s diagnostics failed:\n%s", index, traceback.format_exc())
+	except Exception:
+		log.info("Folder Text Finder shell diagnostics failed:\n%s", traceback.format_exc())
 
 class FolderTextFinderDialog(wx.Dialog):
 	def __init__(self, parent, folder):
