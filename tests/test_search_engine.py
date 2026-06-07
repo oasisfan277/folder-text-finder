@@ -6,6 +6,7 @@ from addon.globalPlugins.folderTextFinder.search_engine import (
 	line_column_for_offset,
 	literal_spans,
 )
+from addon.globalPlugins.folderTextFinder import path_from_shell_location_url, render_invisible_text
 from addon.globalPlugins.folderTextFinder.text_extractors import ExtractedText
 
 
@@ -50,3 +51,11 @@ def test_line_column_for_offset():
 
 def test_literal_spans_do_not_overlap():
 	assert list(literal_spans("aaaa", "aa")) == [(0, 2), (2, 4)]
+
+
+def test_path_from_shell_location_url_decodes_file_url():
+	assert path_from_shell_location_url("file:///C:/Users/Tara/Documents/My%20Folder") == "C:\\Users\\Tara\\Documents\\My Folder"
+
+
+def test_render_invisible_text_makes_whitespace_readable():
+	assert render_invisible_text("one  two\tthree\nfour") == "one<space><space>two<tab>three<newline>\nfour"

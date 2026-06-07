@@ -6,5 +6,7 @@
 - Added local search engine with exact fragment and whole-word matching.
 - Added local extractors for plain text, HTML, DOCX, RTF, ODT, and optional text-based PDF extraction.
 - Added accessible NVDA global plugin dialog scaffold.
+- Added NVDA settings for direct tab/newline entry, invisible character announcements, and page number reporting.
+- Improved current File Explorer folder detection using the Windows Shell application when available.
+- Added readable invisible-character preview text for the search query.
 - Added privacy-focused documentation.
-

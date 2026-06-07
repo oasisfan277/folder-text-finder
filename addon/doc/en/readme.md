@@ -25,6 +25,16 @@ By default, the search field uses standard keyboard navigation:
 
 An advanced setting will allow direct entry of tabs and line breaks in the search field.
 
+## Settings
+
+Folder Text Finder adds an NVDA settings panel with these options:
+
+- Allow direct entry of tabs and line breaks in the search field.
+- Announce invisible characters while typing.
+- Report page numbers when available.
+
+The search dialog also contains a read-only preview of the search text. Spaces, tabs, line breaks, and carriage returns are shown in a readable form so the exact search text can be checked before searching.
+
 ## Results
 
 Results include the file name, full path, line number, column number, matching text preview, and page number when reliable page information is available.
@@ -40,4 +50,3 @@ Image-only or scanned PDFs are not OCR'd.
 ## Search Statistics
 
 After a search, use Search Statistics to review what was searched, skipped, unsupported, unreadable, or found to contain no extractable text.
-

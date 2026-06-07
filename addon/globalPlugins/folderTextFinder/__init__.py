@@ -2,13 +2,17 @@ import os
 import subprocess
 import threading
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 try:
+	import config
 	import globalPluginHandler
 	import gui
 	import scriptHandler
 	import ui
 	import wx
+	from gui import guiHelper
+	from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 except ModuleNotFoundError:
 	class _BaseGlobalPlugin:
 		pass
@@ -28,14 +32,21 @@ except ModuleNotFoundError:
 		def message(text):
 			return None
 
+	class _SettingsPanel:
+		pass
+
 	class _Dialog:
 		pass
 
 	class _WX:
 		Dialog = _Dialog
 
+	config = None
 	globalPluginHandler = _GlobalPluginHandler()
 	gui = None
+	guiHelper = None
+	NVDASettingsDialog = None
+	SettingsPanel = _SettingsPanel
 	scriptHandler = _ScriptHandler()
 	ui = _UI()
 	wx = _WX()
@@ -49,8 +60,47 @@ except NameError:
 	_ = lambda text: text
 
 
+CONFIG_SECTION = "folderTextFinder"
+DEFAULT_FILE_FILTERS = "*.txt;*.md;*.log;*.ini;*.csv;*.json;*.xml;*.html;*.htm;*.css;*.js;*.py;*.docx;*.rtf;*.odt;*.pdf"
+
+
+def _initialize_config():
+	if config is None:
+		return
+	config.conf.spec[CONFIG_SECTION] = {
+		"allowDirectTabsAndLineBreaks": "boolean(default=False)",
+		"announceInvisibleCharacters": "boolean(default=False)",
+		"reportPageNumbers": "boolean(default=True)",
+	}
+
+
+def get_setting(name):
+	defaults = {
+		"allowDirectTabsAndLineBreaks": False,
+		"announceInvisibleCharacters": False,
+		"reportPageNumbers": True,
+	}
+	try:
+		return config.conf[CONFIG_SECTION][name]
+	except Exception:
+		return defaults[name]
+
+
+_initialize_config()
+
+
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	scriptCategory = _("Folder Text Finder")
+
+	def __init__(self):
+		super().__init__()
+		if NVDASettingsDialog and FolderTextFinderSettingsPanel not in NVDASettingsDialog.categoryClasses:
+			NVDASettingsDialog.categoryClasses.append(FolderTextFinderSettingsPanel)
+
+	def terminate(self):
+		if NVDASettingsDialog and FolderTextFinderSettingsPanel in NVDASettingsDialog.categoryClasses:
+			NVDASettingsDialog.categoryClasses.remove(FolderTextFinderSettingsPanel)
+		super().terminate()
 
 	@scriptHandler.script(
 		description=_("Search files containing text in the current File Explorer folder"),
@@ -64,20 +114,78 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		wx.CallAfter(FolderTextFinderDialog, gui.mainFrame, folder)
 
 
+class FolderTextFinderSettingsPanel(SettingsPanel):
+	title = _("Folder Text Finder")
+
+	def makeSettings(self, settingsSizer):
+		settingsSizerHelper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
+		self.allowDirectTabsAndLineBreaksCtrl = settingsSizerHelper.addItem(
+			wx.CheckBox(self, label=_("Allow direct entry of tabs and line breaks in the search field"))
+		)
+		self.allowDirectTabsAndLineBreaksCtrl.SetValue(get_setting("allowDirectTabsAndLineBreaks"))
+		self.announceInvisibleCharactersCtrl = settingsSizerHelper.addItem(
+			wx.CheckBox(self, label=_("Announce invisible characters while typing"))
+		)
+		self.announceInvisibleCharactersCtrl.SetValue(get_setting("announceInvisibleCharacters"))
+		self.reportPageNumbersCtrl = settingsSizerHelper.addItem(
+			wx.CheckBox(self, label=_("Report page numbers when available"))
+		)
+		self.reportPageNumbersCtrl.SetValue(get_setting("reportPageNumbers"))
+
+	def onSave(self):
+		config.conf[CONFIG_SECTION]["allowDirectTabsAndLineBreaks"] = self.allowDirectTabsAndLineBreaksCtrl.GetValue()
+		config.conf[CONFIG_SECTION]["announceInvisibleCharacters"] = self.announceInvisibleCharactersCtrl.GetValue()
+		config.conf[CONFIG_SECTION]["reportPageNumbers"] = self.reportPageNumbersCtrl.GetValue()
+
+
 def get_current_explorer_folder():
+	folder = get_foreground_explorer_folder_from_shell()
+	if folder:
+		return folder
 	try:
 		import api
 
 		obj = api.getForegroundObject()
-		location = getattr(obj, "location", None)
-		if location and os.path.isdir(location):
-			return location
-		name = getattr(obj, "name", None)
-		if name and os.path.isdir(name):
-			return name
+		for attr in ("location", "value", "name"):
+			folder = getattr(obj, attr, None)
+			if folder and os.path.isdir(folder):
+				return folder
 	except Exception:
 		pass
 	return None
+
+
+def get_foreground_explorer_folder_from_shell():
+	try:
+		import ctypes
+		import win32com.client
+
+		foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
+		shell = win32com.client.Dispatch("Shell.Application")
+		for window in shell.Windows():
+			try:
+				if int(window.HWND) != foreground_hwnd:
+					continue
+				path = path_from_shell_location_url(window.LocationURL)
+				if path and os.path.isdir(path):
+					return path
+			except Exception:
+				continue
+	except Exception:
+		return None
+	return None
+
+
+def path_from_shell_location_url(location_url):
+	if not location_url:
+		return None
+	if location_url.startswith("file:///"):
+		parsed = urlparse(location_url)
+		path = unquote(parsed.path)
+		if path.startswith("/") and len(path) > 2 and path[2] == ":":
+			path = path[1:]
+		return path.replace("/", "\\")
+	return location_url
 
 
 class FolderTextFinderDialog(wx.Dialog):
@@ -86,6 +194,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.folder = folder
 		self.results = []
 		self.statistics = None
+		self._lastQueryValue = ""
 		self._build()
 		self.CentreOnScreen()
 		self.Show()
@@ -97,15 +206,21 @@ class FolderTextFinderDialog(wx.Dialog):
 		mainSizer.Add(wx.StaticText(self, label=_("&Search text:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.queryCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_PROCESS_ENTER)
 		mainSizer.Add(self.queryCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+		mainSizer.Add(wx.StaticText(self, label=_("Search text &preview:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		self.previewCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY)
+		mainSizer.Add(self.previewCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
 		self.wholeWordCtrl = wx.CheckBox(self, label=_("&Whole word search"))
 		self.caseCtrl = wx.CheckBox(self, label=_("&Case sensitive"))
 		self.subfoldersCtrl = wx.CheckBox(self, label=_("Include &subfolders"))
-		self.filterCtrl = wx.TextCtrl(self, value="*.txt;*.md;*.log;*.ini;*.csv;*.json;*.xml;*.html;*.htm;*.css;*.js;*.py;*.docx;*.rtf;*.odt;*.pdf")
+		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report &page numbers when available"))
+		self.reportPagesCtrl.SetValue(get_setting("reportPageNumbers"))
+		self.filterCtrl = wx.TextCtrl(self, value=DEFAULT_FILE_FILTERS)
 
 		mainSizer.Add(self.wholeWordCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		mainSizer.Add(self.reportPagesCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(wx.StaticText(self, label=_("File name &filters:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.filterCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
@@ -130,6 +245,8 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.openButton.Bind(wx.EVT_BUTTON, self.on_open_result)
 		self.statsButton.Bind(wx.EVT_BUTTON, self.on_statistics)
 		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
+		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
+		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
 		self.resultsCtrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_open_result)
 
 	def on_search(self, evt):
@@ -146,9 +263,41 @@ class FolderTextFinderDialog(wx.Dialog):
 			case_sensitive=self.caseCtrl.GetValue(),
 			include_subfolders=self.subfoldersCtrl.GetValue(),
 			file_patterns=tuple(pattern.strip() for pattern in self.filterCtrl.GetValue().split(";") if pattern.strip()),
+			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
 		thread = threading.Thread(target=self._run_search, args=(options,), daemon=True)
 		thread.start()
+
+	def on_query_char_hook(self, evt):
+		key_code = evt.GetKeyCode()
+		if get_setting("allowDirectTabsAndLineBreaks") and key_code in (wx.WXK_TAB, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+			character = "\t" if key_code == wx.WXK_TAB else "\n"
+			self.queryCtrl.WriteText(character)
+			if get_setting("announceInvisibleCharacters"):
+				ui.message(_("tab") if character == "\t" else _("newline"))
+			return
+		if get_setting("announceInvisibleCharacters") and key_code == wx.WXK_SPACE:
+			wx.CallAfter(self.announce_space_run)
+		evt.Skip()
+
+	def on_query_text(self, evt):
+		value = self.queryCtrl.GetValue()
+		self.previewCtrl.SetValue(render_invisible_text(value))
+		self._lastQueryValue = value
+		evt.Skip()
+
+	def announce_space_run(self):
+		value = self.queryCtrl.GetValue()
+		insertion_point = self.queryCtrl.GetInsertionPoint()
+		run = 0
+		index = insertion_point - 1
+		while index >= 0 and value[index] == " ":
+			run += 1
+			index -= 1
+		if run <= 1:
+			ui.message(_("space"))
+		else:
+			ui.message(_("{count} spaces").format(count=run))
 
 	def _run_search(self, options):
 		searcher = Searcher(Path(self.folder), options)
@@ -209,3 +358,16 @@ class StatisticsDialog(wx.Dialog):
 			wx.TheClipboard.SetData(wx.TextDataObject(self.report))
 			wx.TheClipboard.Close()
 			ui.message(_("Search statistics copied to clipboard."))
+
+
+def render_invisible_text(text):
+	if not text:
+		return ""
+	return (
+		text.replace("\\", "\\\\")
+		.replace("\r\n", "<newline>")
+		.replace("\r", "<carriage return>")
+		.replace("\n", "<newline>\n")
+		.replace("\t", "<tab>")
+		.replace(" ", "<space>")
+	)

@@ -45,8 +45,19 @@ Image-only or scanned PDFs are not OCR'd.
 - Case-sensitive or case-insensitive search
 - Include subfolders
 - File type filtering
+- Page number reporting when reliable page information is available
 
 Exact fragment search matches the query literally, including punctuation, symbols, spaces, repeated spaces, tabs, line breaks, blank lines, partial words, and parts of file paths.
+
+## NVDA Settings
+
+Folder Text Finder adds an NVDA settings panel with these options:
+
+- Allow direct entry of tabs and line breaks in the search field.
+- Announce invisible characters while typing.
+- Report page numbers when available.
+
+Standard keyboard navigation remains the default. Advanced direct entry can be enabled by users who need to search for literal tabs or line breaks.
 
 ## Search Statistics
 
@@ -55,4 +66,3 @@ After each search, the results dialog offers a Search Statistics report. It list
 ## Project Status
 
 This repository contains the initial add-on scaffold and core local search engine. It is not yet ready for NVDA Add-on Store submission.
-
