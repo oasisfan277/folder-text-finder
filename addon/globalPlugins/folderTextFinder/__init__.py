@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import threading
 import traceback
@@ -64,6 +65,7 @@ except NameError:
 
 CONFIG_SECTION = "folderTextFinder"
 DEFAULT_FILE_FILTERS = "*.txt;*.md;*.log;*.ini;*.csv;*.json;*.xml;*.html;*.htm;*.css;*.js;*.py;*.docx;*.rtf;*.odt;*.pdf"
+TEXT_EDITOR_EXTENSIONS = {".txt", ".log", ".md", ".csv", ".ini", ".json", ".xml", ".html", ".htm", ".css", ".js", ".py"}
 
 
 def _initialize_config():
@@ -529,13 +531,16 @@ class ResultLocationDialog(wx.Dialog):
 		self.textCtrl = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
 		sizer.Add(self.textCtrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
+		editOriginalButton = wx.Button(self, label=_("Edit &Original"))
 		openFileButton = wx.Button(self, label=_("Open &File"))
 		closeButton = wx.Button(self, wx.ID_CLOSE)
+		buttonSizer.Add(editOriginalButton, 0, wx.ALL, 4)
 		buttonSizer.Add(openFileButton, 0, wx.ALL, 4)
 		buttonSizer.Add(closeButton, 0, wx.ALL, 4)
 		sizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
 		self.SetSizer(sizer)
 		self.SetSize((900, 650))
+		editOriginalButton.Bind(wx.EVT_BUTTON, self.on_edit_original)
 		openFileButton.Bind(wx.EVT_BUTTON, self.on_open_file)
 		closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
 		wx.CallAfter(self.focus_match)
@@ -549,6 +554,11 @@ class ResultLocationDialog(wx.Dialog):
 		self.textCtrl.SetSelection(start, end)
 		ui.message(_("Result opened at line {line}, column {column}.").format(line=self.result.line, column=self.result.column))
 
+	def on_edit_original(self, evt):
+		if open_editable_result(self.result, self.text):
+			return
+		ui.message(_("Could not open the original file at the exact match. Use this result window for the exact location."))
+
 	def on_open_file(self, evt):
 		open_file_or_select(self.result.path)
 
@@ -558,6 +568,96 @@ def open_file_or_select(path):
 		os.startfile(str(path))
 	except Exception:
 		subprocess.Popen(["explorer.exe", "/select,", str(path)])
+
+
+def open_editable_result(result, extracted_text):
+	extension = result.path.suffix.lower()
+	if extension == ".docx":
+		return open_docx_result_in_word(result, extracted_text)
+	if extension in TEXT_EDITOR_EXTENSIONS:
+		return open_text_result_in_editor(result)
+	return False
+
+
+def open_text_result_in_editor(result):
+	location = f"{result.path}:{result.line}:{result.column}"
+	for command in get_code_commands():
+		try:
+			subprocess.Popen([command, "-g", location])
+			ui.message(_("Opened original file at line {line}, column {column}.").format(line=result.line, column=result.column))
+			return True
+		except Exception:
+			continue
+	notepad_plus_plus = shutil.which("notepad++") or shutil.which("notepad++.exe")
+	if notepad_plus_plus:
+		try:
+			subprocess.Popen([notepad_plus_plus, f"-n{result.line}", f"-c{result.column}", str(result.path)])
+			ui.message(_("Opened original file at line {line}, column {column}.").format(line=result.line, column=result.column))
+			return True
+		except Exception:
+			return False
+	return False
+
+
+def get_code_commands():
+	commands = []
+	for name in ("code.cmd", "code.exe", "code"):
+		command = shutil.which(name)
+		if command:
+			commands.append(command)
+	local_app_data = os.environ.get("LOCALAPPDATA")
+	if local_app_data:
+		for relative_path in (
+			"Programs\\Microsoft VS Code\\bin\\code.cmd",
+			"Programs\\Microsoft VS Code Insiders\\bin\\code-insiders.cmd",
+		):
+			command = os.path.join(local_app_data, relative_path)
+			if os.path.exists(command):
+				commands.append(command)
+	return commands
+
+
+def open_docx_result_in_word(result, extracted_text):
+	matched_text = extracted_text[result.start:result.end]
+	if not matched_text:
+		return False
+	try:
+		word = get_word_application()
+		word.Visible = True
+		document = word.Documents.Open(str(result.path))
+		selection = word.Selection
+		selection.HomeKey(Unit=6)
+		find = selection.Find
+		find.ClearFormatting()
+		find.Text = matched_text
+		find.Forward = True
+		find.Wrap = 0
+		occurrence = extracted_text[:result.start].count(matched_text) + 1
+		for _ in range(occurrence):
+			if not find.Execute():
+				document.Activate()
+				ui.message(_("Opened original document, but Word could not select the exact match."))
+				return True
+		document.Activate()
+		ui.message(_("Opened original document at the exact match."))
+		return True
+	except Exception:
+		log_exception("Folder Text Finder could not open DOCX result in Word.")
+		return False
+
+
+def get_word_application():
+	try:
+		import comtypes.client
+
+		return comtypes.client.CreateObject("Word.Application", dynamic=True)
+	except Exception:
+		try:
+			import win32com.client
+
+			return win32com.client.Dispatch("Word.Application")
+		except Exception:
+			raise
 
 class StatisticsDialog(wx.Dialog):
 	def __init__(self, parent, report):
