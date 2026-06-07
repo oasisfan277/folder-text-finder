@@ -61,6 +61,8 @@ Standard keyboard navigation remains the default. Advanced direct entry can be e
 
 ## Search Statistics
 
+Press Enter on a selected result to open the extracted document text at the exact match. The result window also offers an Open File button for opening the original file in its default application.
+
 After each search, the results dialog offers a Search Statistics report. It lists the search folder, search mode, duration, number of matches, number of searched files, unsupported files, unreadable files, and files without extractable text.
 
 ## Project Status

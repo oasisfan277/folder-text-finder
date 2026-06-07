@@ -13,6 +13,7 @@
 - Added readable invisible-character preview text for the search query.
 - Added explicit Exact fragment and Exact whole word search-mode choices.
 - Added sentence excerpts for prose search results.
+- Added Enter-to-open result text with the caret placed on the exact match.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.

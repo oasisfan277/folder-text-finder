@@ -145,3 +145,9 @@ def test_preview_stops_at_exclamation_mark_inside_closing_quote():
 	start = text.index("sister")
 	preview = preview_for_span(text, start, start + len("sister"))
 	assert preview == '"Run, sister!"'
+
+def test_search_result_keeps_exact_match_offsets():
+	text = "alpha sister beta"
+	result = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="sister")))[0]
+	assert result.start == text.index("sister")
+	assert result.end == result.start + len("sister")

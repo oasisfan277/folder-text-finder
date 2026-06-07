@@ -53,6 +53,7 @@ except ModuleNotFoundError:
 	wx = _WX()
 
 from .search_engine import SearchOptions, Searcher
+from .text_extractors import TextExtractionError, extract_text
 
 
 try:
@@ -416,6 +417,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
 		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_result)
+		self.resultsCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_results_char_hook)
 
 	def on_search(self, evt):
 		query = self.queryCtrl.GetValue()
@@ -483,16 +485,32 @@ class FolderTextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
 
+	def on_results_char_hook(self, evt):
+		key_code = evt.GetKeyCode()
+		if key_code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+			self.open_selected_result()
+			return
+		evt.Skip()
+
 	def on_open_result(self, evt):
+		self.open_selected_result()
+
+	def open_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
 		if index == wx.NOT_FOUND or index < 0 or index >= len(self.results):
 			ui.message(_("Select a result first."))
 			return
-		path = self.results[index].path
+		result = self.results[index]
 		try:
-			os.startfile(str(path))
+			extracted = extract_text(result.path)
+		except TextExtractionError as exc:
+			ui.message(_("Could not open result text: {reason}").format(reason=exc.message))
+			return
 		except Exception:
-			subprocess.Popen(["explorer.exe", "/select,", str(path)])
+			log_exception("Folder Text Finder could not open result text.")
+			ui.message(_("Could not open result text."))
+			return
+		ResultLocationDialog(self, result, extracted.text).Show()
 
 	def on_statistics(self, evt):
 		if not self.statistics:
@@ -500,6 +518,46 @@ class FolderTextFinderDialog(wx.Dialog):
 			return
 		StatisticsDialog(self, self.statistics.to_report()).Show()
 
+class ResultLocationDialog(wx.Dialog):
+	def __init__(self, parent, result, text):
+		super().__init__(parent, title=_("Search Result"))
+		self.result = result
+		self.text = text
+		sizer = wx.BoxSizer(wx.VERTICAL)
+		sizer.Add(wx.StaticText(self, label=_("File: {path}").format(path=result.path)), 0, wx.ALL, 8)
+		sizer.Add(wx.StaticText(self, label=_("Location: {location}").format(location=result.format_location())), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+		self.textCtrl = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+		sizer.Add(self.textCtrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
+		openFileButton = wx.Button(self, label=_("Open &File"))
+		closeButton = wx.Button(self, wx.ID_CLOSE)
+		buttonSizer.Add(openFileButton, 0, wx.ALL, 4)
+		buttonSizer.Add(closeButton, 0, wx.ALL, 4)
+		sizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
+		self.SetSizer(sizer)
+		self.SetSize((900, 650))
+		openFileButton.Bind(wx.EVT_BUTTON, self.on_open_file)
+		closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
+		wx.CallAfter(self.focus_match)
+
+	def focus_match(self):
+		start = max(0, min(self.result.start, len(self.text)))
+		end = max(start, min(self.result.end, len(self.text)))
+		self.Raise()
+		self.textCtrl.SetFocus()
+		self.textCtrl.SetInsertionPoint(start)
+		self.textCtrl.SetSelection(start, end)
+		ui.message(_("Result opened at line {line}, column {column}.").format(line=self.result.line, column=self.result.column))
+
+	def on_open_file(self, evt):
+		open_file_or_select(self.result.path)
+
+
+def open_file_or_select(path):
+	try:
+		os.startfile(str(path))
+	except Exception:
+		subprocess.Popen(["explorer.exe", "/select,", str(path)])
 
 class StatisticsDialog(wx.Dialog):
 	def __init__(self, parent, report):
