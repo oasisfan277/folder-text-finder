@@ -151,3 +151,14 @@ def test_search_result_keeps_exact_match_offsets():
 	result = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="sister")))[0]
 	assert result.start == text.index("sister")
 	assert result.end == result.start + len("sister")
+
+def test_docx_result_location_uses_paragraph_label():
+	text = "First paragraph\nSecond paragraph with cat"
+	result = list(find_matches(Path("book.docx"), ExtractedText(text), SearchOptions(query="cat")))[0]
+	assert result.format_location() == "Paragraph 2, Column 23"
+
+
+def test_text_result_location_uses_line_label():
+	text = "First line\nSecond line with cat"
+	result = list(find_matches(Path("book.txt"), ExtractedText(text), SearchOptions(query="cat")))[0]
+	assert result.format_location() == "Line 2, Column 18"

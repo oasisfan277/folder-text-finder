@@ -2,7 +2,7 @@
 
 Folder Text Finder is an NVDA add-on for searching files containing text in the current folder, a selected folder, or the parent folder of a focused file.
 
-The add-on is designed for precise local searching. It can search for exact fragments, exact whole words, punctuation, repeated spaces, tabs, and line breaks. Results are presented in an accessible dialog with file, line, column, preview text, and page number when reliable page information is available.
+The add-on is designed for precise local searching. It can search for exact fragments, exact whole words, punctuation, repeated spaces, tabs, and line breaks. Results are presented in an accessible dialog with file, location, preview text, and page number when reliable page information is available. Text files use line and column. Word-style documents use paragraph and column because Word visual line numbers do not match extracted text.
 
 ## Privacy
 

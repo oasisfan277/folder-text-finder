@@ -27,13 +27,14 @@ class SearchResult:
 	column: int
 	preview: str
 	page: int | None = None
+	location_unit: str = "Line"
 	start: int = 0
 	end: int = 0
 
 	def format_location(self) -> str:
 		if self.page is not None:
-			return f"Page {self.page}, Line {self.line}, Column {self.column}"
-		return f"Line {self.line}, Column {self.column}"
+			return f"Page {self.page}, {self.location_unit} {self.line}, Column {self.column}"
+		return f"{self.location_unit} {self.line}, Column {self.column}"
 
 
 @dataclass
@@ -156,7 +157,13 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 	for start, end in spans:
 		line, column = line_column_for_offset(text, start)
 		page = extracted.page_for_offset(start) if options.report_page_numbers else None
-		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page, start=start, end=end)
+		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page, location_unit=location_unit_for_path(path), start=start, end=end)
+
+
+def location_unit_for_path(path: Path) -> str:
+	if path.suffix.lower() in {".docx", ".odt"}:
+		return "Paragraph"
+	return "Line"
 
 
 def exact_whole_word_spans(text: str, query: str):
