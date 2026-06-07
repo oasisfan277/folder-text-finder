@@ -1,0 +1,52 @@
+from pathlib import Path
+
+from addon.globalPlugins.folderTextFinder.search_engine import (
+	SearchOptions,
+	find_matches,
+	line_column_for_offset,
+	literal_spans,
+)
+from addon.globalPlugins.folderTextFinder.text_extractors import ExtractedText
+
+
+def test_literal_search_matches_punctuation_and_partial_words():
+	text = "alpha C:\\Users\\Tara\\file-name.txt omega"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="file-name.txt")))
+	assert len(results) == 1
+	assert results[0].column == 21
+
+
+def test_literal_search_matches_repeated_spaces():
+	text = "foo   bar\nfoo bar"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="foo   bar")))
+	assert len(results) == 1
+	assert results[0].line == 1
+
+
+def test_literal_search_matches_tabs_and_newlines():
+	text = "first\tsecond\nthird"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="\tsecond\nthird")))
+	assert len(results) == 1
+	assert results[0].line == 1
+	assert results[0].column == 6
+
+
+def test_whole_word_search_does_not_match_inside_words():
+	text = "cat scatter cat"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="cat", whole_word=True)))
+	assert len(results) == 2
+	assert [result.column for result in results] == [1, 13]
+
+
+def test_case_insensitive_search_uses_casefold():
+	text = "Straße STRASSE"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="strasse")))
+	assert len(results) == 2
+
+
+def test_line_column_for_offset():
+	assert line_column_for_offset("one\ntwo\nthree", 8) == (3, 1)
+
+
+def test_literal_spans_do_not_overlap():
+	assert list(literal_spans("aaaa", "aa")) == [(0, 2), (2, 4)]

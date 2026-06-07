@@ -1,0 +1,25 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  search-engine:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python files
+        run: python -m compileall addon tests
+
+      - name: Run search engine tests
+        run: python -c "import tests.test_search_engine as t; [getattr(t, name)() for name in dir(t) if name.startswith('test_')]; print('search tests passed')"
+
