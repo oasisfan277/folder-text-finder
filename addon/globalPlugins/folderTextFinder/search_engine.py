@@ -162,7 +162,7 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 
 def location_unit_for_path(path: Path) -> str:
 	if path.suffix.lower() in {".docx", ".odt"}:
-		return "Paragraph"
+		return "Text block"
 	return "Line"
 
 
