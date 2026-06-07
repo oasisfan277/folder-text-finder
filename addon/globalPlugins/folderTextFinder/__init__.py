@@ -113,6 +113,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def __init__(self):
 		super().__init__()
+		self._dialog = None
 		if NVDASettingsDialog and FolderTextFinderSettingsPanel not in NVDASettingsDialog.categoryClasses:
 			NVDASettingsDialog.categoryClasses.append(FolderTextFinderSettingsPanel)
 
@@ -139,7 +140,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("Open a folder or focus a file before using Folder Text Finder."))
 			return
 		log_info("Folder Text Finder opening dialog for folder: %s", folder)
-		wx.CallAfter(FolderTextFinderDialog, gui.mainFrame, folder)
+		wx.CallAfter(self._show_dialog, folder)
+
+	def _show_dialog(self, folder):
+		if self._dialog and self._dialog:
+			try:
+				self._dialog.Destroy()
+			except Exception:
+				pass
+		self._dialog = FolderTextFinderDialog(gui.mainFrame, folder)
+		self._dialog.Bind(wx.EVT_WINDOW_DESTROY, self._on_dialog_destroy)
+		self._dialog.present()
+
+	def _on_dialog_destroy(self, evt):
+		if evt.GetEventObject() is self._dialog:
+			self._dialog = None
+		evt.Skip()
 
 
 class FolderTextFinderSettingsPanel(SettingsPanel):
@@ -338,7 +354,14 @@ class FolderTextFinderDialog(wx.Dialog):
 		self._lastQueryValue = ""
 		self._build()
 		self.CentreOnScreen()
+
+	def present(self):
 		self.Show()
+		self.Raise()
+		self.SetFocus()
+		self.queryCtrl.SetFocus()
+		ui.message(_("Folder Text Finder opened. Search folder: {folder}").format(folder=self.folder))
+		log_info("Folder Text Finder dialog presented for folder: %s", self.folder)
 
 	def _build(self):
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
