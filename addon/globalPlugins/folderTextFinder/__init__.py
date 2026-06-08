@@ -487,6 +487,62 @@ class FolderTextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetSelection(0)
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
+		self.start_word_location_enrichment(results)
+
+	def start_word_location_enrichment(self, results):
+		if not any(result.path.suffix.lower() == ".docx" for result in results):
+			return
+		ui.message(_("Finding Word page and visual line numbers in the background."))
+		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
+		thread.start()
+
+	def enrich_word_locations(self, original_results):
+		updated_results = list(original_results)
+		updated_count = 0
+		docx_count = 0
+		last_error = None
+		indices_by_path = {}
+		for index, result in enumerate(original_results):
+			if result.path.suffix.lower() == ".docx":
+				indices_by_path.setdefault(result.path, []).append(index)
+				docx_count += 1
+		for path, indices in indices_by_path.items():
+			try:
+				extracted_text = extract_text(path).text
+				locations = get_docx_visual_locations(
+					path,
+					[original_results[index] for index in indices],
+					extracted_text,
+					visible=False,
+					close_document=True,
+					quit_word=True,
+				)
+			except Exception as exc:
+				log_exception("Folder Text Finder could not enrich DOCX result locations in the background.")
+				last_error = str(exc)
+				continue
+			for local_index, location in locations.items():
+				page, visual_line = location
+				result_index = indices[local_index]
+				updated_results[result_index] = replace(original_results[result_index], page=page, line=visual_line, column=0, location_unit="Visual line")
+				updated_count += 1
+		if updated_count:
+			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
+		elif docx_count:
+			wx.CallAfter(self.report_word_location_enrichment_failed, last_error)
+
+	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
+		if self.results is not original_results:
+			return
+		self.results = updated_results
+		self.refresh_results_list()
+		ui.message(_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
+
+	def report_word_location_enrichment_failed(self, reason=None):
+		if reason:
+			ui.message(_("Word page and visual line numbers could not be added in the background: {reason}").format(reason=reason))
+		else:
+			ui.message(_("Word page and visual line numbers could not be added in the background. Use Open File on one result to test Word directly."))
 
 	def refresh_results_list(self):
 		selection = self.resultsCtrl.GetSelection()
@@ -612,11 +668,13 @@ def initialize_com_for_thread():
 	except Exception:
 		return lambda: None
 
-def get_docx_visual_locations(path, results, extracted_text):
+def get_docx_visual_locations(path, results, extracted_text, visible=True, close_document=False, quit_word=False):
 	uninitialize_com = initialize_com_for_thread()
+	word = None
+	document = None
 	try:
-		word = get_word_application()
-		word.Visible = True
+		word = get_word_application(new_instance=not visible or quit_word)
+		word.Visible = visible
 		document = word.Documents.Open(str(path))
 		document.Activate()
 		locations = {}
@@ -628,6 +686,16 @@ def get_docx_visual_locations(path, results, extracted_text):
 				locations[index] = (page, visual_line)
 		return locations
 	finally:
+		if close_document and document is not None:
+			try:
+				document.Close(False)
+			except Exception:
+				log_exception("Folder Text Finder could not close the hidden Word document.")
+		if quit_word and word is not None:
+			try:
+				word.Quit()
+			except Exception:
+				log_exception("Folder Text Finder could not close the hidden Word application.")
 		uninitialize_com()
 
 
@@ -680,10 +748,12 @@ def open_docx_result_in_word(result, extracted_text):
 		return None
 
 
-def get_word_application():
+def get_word_application(new_instance=False):
 	try:
 		import win32com.client
 
+		if new_instance and hasattr(win32com.client, "DispatchEx"):
+			return win32com.client.DispatchEx("Word.Application")
 		return win32com.client.Dispatch("Word.Application")
 	except Exception as win32_error:
 		try:
