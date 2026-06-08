@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- Revealed search results immediately and filled Word page and visual line numbers in the background, updating each result in place, instead of holding every result until the whole Word lookup finished.
+- Showed "Word location loading" for Word results until their numbers arrive, then updated them in place, instead of announcing the exact-position placeholder while waiting.
+- Fell back to the Open Result position for any Word result that Word did not report, so results never stay stuck on loading.
+- Greatly sped up the Word lookup by reusing a single hidden Word instance for the whole search and walking each document once instead of restarting the search from the top of the document for every match.
+
 ## 0.2.0
 
 - Held the results announcement for searches that contain DOCX files until the background Word page and visual line numbers finish loading, then revealed and announced the results once, so results are not announced twice with incomplete locations.

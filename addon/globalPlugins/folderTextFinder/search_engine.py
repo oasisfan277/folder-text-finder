@@ -30,8 +30,11 @@ class SearchResult:
 	location_unit: str = "Line"
 	start: int = 0
 	end: int = 0
+	word_pending: bool = False
 
 	def format_location(self) -> str:
+		if self.word_pending:
+			return "Word location loading"
 		if self.location_unit == "Open Result":
 			if self.page is not None:
 				return f"Page {self.page}, exact position in Open Result"
@@ -162,10 +165,11 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 	else:
 		spans = literal_spans(search_text, search_query)
 
+	word_pending = path.suffix.lower() == ".docx"
 	for start, end in spans:
 		line, column = line_column_for_offset(text, start)
 		page = extracted.page_for_offset(start) if options.report_page_numbers else None
-		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page, location_unit=location_unit_for_path(path), start=start, end=end)
+		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page, location_unit=location_unit_for_path(path), start=start, end=end, word_pending=word_pending)
 
 
 def location_unit_for_path(path: Path) -> str:

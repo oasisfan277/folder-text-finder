@@ -383,6 +383,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.results = []
 		self.statistics = None
 		self._lastQueryValue = ""
+		self._search_generation = 0
 		self._build()
 		self.CentreOnScreen()
 
@@ -531,99 +532,112 @@ class FolderTextFinderDialog(wx.Dialog):
 	def _finish_search(self, results, statistics):
 		self.results = results
 		self.statistics = statistics
+		self._search_generation += 1
 		self.refresh_results_list()
 		self.searchButton.Enable()
-		holding_for_word = bool(results and self._has_docx_results(results))
+		has_docx = self._has_docx_results(results)
 		log_info(
-			"Folder Text Finder search complete. results=%d files_with_matches=%d duration=%.2f holding_for_word=%s",
+			"Folder Text Finder search complete. results=%d files_with_matches=%d duration=%.2f has_docx=%s",
 			len(results),
 			len(statistics.files_with_matches),
 			statistics.duration,
-			holding_for_word,
+			has_docx,
 		)
-		if holding_for_word:
-			# Word visual line numbers load in the background. Hold the results
-			# announcement until they are ready, then reveal the results.
-			self.start_word_location_enrichment(results)
-		else:
-			self._reveal_results()
+		# Reveal the results straight away so they are usable, then fill the Word
+		# page and visual line numbers in the background, updating each result in
+		# place as Word reports it.
+		if results:
+			self.resultsCtrl.SetSelection(0)
+			self.resultsCtrl.SetFocus()
+		ui.message(statistics.summary_message())
+		if has_docx:
+			self.start_word_location_enrichment(results, self._search_generation)
 
 	def _has_docx_results(self, results):
 		return any(result.path.suffix.lower() == ".docx" for result in results)
 
-	def _reveal_results(self, prefix=None):
-		if self.results:
-			self.resultsCtrl.SetSelection(0)
-			self.resultsCtrl.SetFocus()
-		message = self.statistics.summary_message() if self.statistics else ""
-		if prefix:
-			message = "{prefix} {summary}".format(prefix=prefix, summary=message).strip()
-		if message:
-			ui.message(message)
-
-	def start_word_location_enrichment(self, results):
-		if not self._has_docx_results(results):
-			return
+	def start_word_location_enrichment(self, results, generation):
 		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
-		log_info("Folder Text Finder getting Word locations for %d DOCX results.", docx_count)
-		ui.message(_("Getting Word page and visual line numbers. Please wait."))
-		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
+		log_info("Folder Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
+		ui.message(_("Getting Word page and visual line numbers in the background."))
+		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation), daemon=True)
 		thread.start()
 
-	def enrich_word_locations(self, original_results):
-		updated_results = list(original_results)
-		updated_count = 0
-		docx_count = 0
-		last_error = None
+	def enrich_word_locations(self, original_results, generation):
 		indices_by_path = {}
 		for index, result in enumerate(original_results):
 			if result.path.suffix.lower() == ".docx":
 				indices_by_path.setdefault(result.path, []).append(index)
-				docx_count += 1
-		for path, indices in indices_by_path.items():
-			try:
-				extracted_text = extract_text(path).text
-				locations = get_docx_visual_locations(
-					path,
-					[original_results[index] for index in indices],
-					extracted_text,
-					visible=False,
-					close_document=True,
-					quit_word=True,
-				)
-			except Exception as exc:
-				log_exception("Folder Text Finder could not enrich DOCX result locations in the background.")
-				last_error = str(exc)
-				continue
-			for local_index, location in locations.items():
-				page, visual_line = location
-				result_index = indices[local_index]
-				updated_results[result_index] = replace(original_results[result_index], page=page, line=visual_line, column=0, location_unit="Visual line")
-				updated_count += 1
-		log_info("Folder Text Finder Word location lookup finished. updated=%d of docx=%d", updated_count, docx_count)
-		if updated_count:
-			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
+		docx_count = sum(len(indices) for indices in indices_by_path.values())
+		updated_total = 0
+		# Reuse a single hidden Word instance for the whole batch instead of
+		# starting and quitting Word once per file.
+		uninitialize_com = initialize_com_for_thread()
+		word = None
+		try:
+			for path, indices in indices_by_path.items():
+				try:
+					extracted_text = extract_text(path).text
+					if word is None:
+						word = get_word_application(new_instance=True)
+						word.Visible = False
+					document = word.Documents.Open(str(path))
+					try:
+						document.Activate()
+						locations = collect_docx_visual_locations(word, [original_results[index] for index in indices], extracted_text)
+					finally:
+						try:
+							document.Close(False)
+						except Exception:
+							log_exception("Folder Text Finder could not close the hidden Word document.")
+				except Exception:
+					log_exception("Folder Text Finder could not enrich DOCX result locations in the background.")
+					wx.CallAfter(self.clear_word_pending, generation, list(indices))
+					continue
+				updates = {}
+				for local_index, location in locations.items():
+					updates[indices[local_index]] = location
+				# Any result Word did not report stops loading and falls back to Open Result.
+				cleared = [index for local_index, index in enumerate(indices) if local_index not in locations]
+				updated_total += len(updates)
+				wx.CallAfter(self.apply_word_locations, generation, updates, cleared)
+		finally:
+			if word is not None:
+				try:
+					word.Quit()
+				except Exception:
+					log_exception("Folder Text Finder could not close the hidden Word application.")
+			uninitialize_com()
+		log_info("Folder Text Finder Word location lookup finished. updated=%d of docx=%d", updated_total, docx_count)
+		wx.CallAfter(self.announce_word_enrichment_done, generation, updated_total, docx_count)
+
+	def apply_word_locations(self, generation, updates, cleared):
+		if generation != self._search_generation:
+			return
+		for result_index, (page, visual_line) in updates.items():
+			if 0 <= result_index < len(self.results):
+				self.results[result_index] = replace(self.results[result_index], page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
+				self.resultsCtrl.SetString(result_index, format_result_for_list(self.results[result_index]))
+		self._clear_pending_indices(cleared)
+
+	def clear_word_pending(self, generation, indices):
+		if generation != self._search_generation:
+			return
+		self._clear_pending_indices(indices)
+
+	def _clear_pending_indices(self, indices):
+		for result_index in indices:
+			if 0 <= result_index < len(self.results) and self.results[result_index].word_pending:
+				self.results[result_index] = replace(self.results[result_index], word_pending=False)
+				self.resultsCtrl.SetString(result_index, format_result_for_list(self.results[result_index]))
+
+	def announce_word_enrichment_done(self, generation, updated_total, docx_count):
+		if generation != self._search_generation:
+			return
+		if updated_total:
+			ui.message(_("Word page and visual line numbers ready for {count} results.").format(count=updated_total))
 		elif docx_count:
-			wx.CallAfter(self.report_word_location_enrichment_failed, original_results, last_error)
-
-	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
-		if self.results is not original_results:
-			log_info("Folder Text Finder discarded stale Word location results.")
-			return
-		self.results = updated_results
-		self.refresh_results_list()
-		self._reveal_results(prefix=_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
-
-	def report_word_location_enrichment_failed(self, original_results, reason=None):
-		if self.results is not original_results:
-			log_info("Folder Text Finder discarded stale Word location failure.")
-			return
-		log_info("Folder Text Finder Word location lookup failed. Revealing results without Word numbers.")
-		if reason:
-			ui.message(_("Word page and visual line numbers could not be added: {reason}").format(reason=reason))
-		else:
 			ui.message(_("Word page and visual line numbers could not be added. Use Open File on one result to test Word directly."))
-		self._reveal_results()
 
 	def refresh_results_list(self):
 		selection = self.resultsCtrl.GetSelection()
@@ -714,7 +728,7 @@ class ResultLocationDialog(wx.Dialog):
 		self.textCtrl.SetFocus()
 		self.textCtrl.SetInsertionPoint(start)
 		self.textCtrl.SetSelection(start, end)
-		if self.result.location_unit == "Open Result":
+		if self.result.location_unit == "Open Result" or self.result.word_pending:
 			ui.message(_("Result opened at the exact match."))
 		else:
 			ui.message(_("Result opened at {location}.").format(location=self.result.format_location()))
@@ -759,14 +773,7 @@ def get_docx_visual_locations(path, results, extracted_text, visible=True, close
 		word.Visible = visible
 		document = word.Documents.Open(str(path))
 		document.Activate()
-		locations = {}
-		for index, result in enumerate(results):
-			if select_docx_match_in_word(word, result, extracted_text):
-				selection = word.Selection
-				page = selection.Information(3)
-				visual_line = selection.Information(10)
-				locations[index] = (page, visual_line)
-		return locations
+		return collect_docx_visual_locations(word, results, extracted_text)
 	finally:
 		if close_document and document is not None:
 			try:
@@ -781,22 +788,43 @@ def get_docx_visual_locations(path, results, extracted_text, visible=True, close
 		uninitialize_com()
 
 
-def select_docx_match_in_word(word, result, extracted_text):
-	matched_text = extracted_text[result.start:result.end]
-	if not matched_text:
-		return False
+def collect_docx_visual_locations(word, results, extracted_text):
+	# Walk the document forward once, mapping each result to the page and visual
+	# line Word reports. Results arrive in document order, so for a given match
+	# string the occurrences are reached in ascending order without restarting
+	# from the top of the document for every match. This turns a per-match
+	# O(n^2) search into a single O(n) forward pass. MatchCase keeps Word's
+	# stepping aligned with the case-sensitive occurrence count below.
 	selection = word.Selection
-	selection.HomeKey(Unit=6)
 	find = selection.Find
 	find.ClearFormatting()
-	find.Text = matched_text
 	find.Forward = True
 	find.Wrap = 0
-	occurrence = extracted_text[:result.start].count(matched_text) + 1
-	for _attempt in range(occurrence):
-		if not find.Execute():
-			return False
-	return True
+	find.MatchCase = True
+	locations = {}
+	current_text = None
+	found_count = 0
+	for index, result in enumerate(results):
+		matched_text = extracted_text[result.start:result.end]
+		if not matched_text:
+			continue
+		occurrence = extracted_text[:result.start].count(matched_text) + 1
+		if matched_text != current_text:
+			selection.HomeKey(Unit=6)
+			find.Text = matched_text
+			current_text = matched_text
+			found_count = 0
+		while found_count < occurrence:
+			if not find.Execute():
+				break
+			found_count += 1
+			if found_count < occurrence:
+				selection.Collapse(0)
+		if found_count < occurrence:
+			continue
+		locations[index] = (selection.Information(3), selection.Information(10))
+		selection.Collapse(0)
+	return locations
 
 def open_result_file(result, extracted_text=None):
 	log_info("Folder Text Finder opening original file with a %s extension.", result.path.suffix.lower() or "no-extension")
@@ -823,7 +851,7 @@ def open_docx_result_in_word(result, extracted_text):
 		if location:
 			page, visual_line = location
 			ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
-			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line")
+			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
 		ui.message(_("Opened in Word, but Word did not report a page or visual line."))
 		return result
 	except Exception:

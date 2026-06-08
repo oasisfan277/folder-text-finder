@@ -152,9 +152,15 @@ def test_search_result_keeps_exact_match_offsets():
 	assert result.start == text.index("sister")
 	assert result.end == result.start + len("sister")
 
-def test_docx_result_location_uses_open_result_label():
+def test_docx_result_starts_pending_word_location():
 	text = "First paragraph\nSecond paragraph with cat"
 	result = list(find_matches(Path("book.docx"), ExtractedText(text), SearchOptions(query="cat")))[0]
+	assert result.word_pending is True
+	assert result.format_location() == "Word location loading"
+
+
+def test_docx_result_falls_back_to_open_result_label():
+	result = SearchResult(path=Path("book.docx"), line=1, column=1, preview="match", location_unit="Open Result", word_pending=False)
 	assert result.format_location() == "Exact position in Open Result"
 
 
