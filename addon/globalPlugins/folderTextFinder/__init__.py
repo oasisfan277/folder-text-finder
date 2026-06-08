@@ -2,7 +2,6 @@ import os
 import subprocess
 import threading
 import traceback
-from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -487,7 +486,6 @@ class FolderTextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetSelection(0)
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
-		self.start_word_location_enrichment(results)
 
 	def refresh_results_list(self):
 		selection = self.resultsCtrl.GetSelection()
@@ -498,54 +496,6 @@ class FolderTextFinderDialog(wx.Dialog):
 			if selection == wx.NOT_FOUND or selection < 0 or selection >= len(self.results):
 				selection = 0
 			self.resultsCtrl.SetSelection(selection)
-
-	def start_word_location_enrichment(self, results):
-		if not any(result.path.suffix.lower() == ".docx" for result in results):
-			return
-		ui.message(_("Asking Word for page and visual line numbers."))
-		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
-		thread.start()
-
-	def enrich_word_locations(self, original_results):
-		updated_results = list(original_results)
-		updated_count = 0
-		docx_count = 0
-		last_error = None
-		indices_by_path = {}
-		for index, result in enumerate(original_results):
-			if result.path.suffix.lower() == ".docx":
-				indices_by_path.setdefault(result.path, []).append(index)
-				docx_count += 1
-		for path, indices in indices_by_path.items():
-			try:
-				extracted_text = extract_text(path).text
-				locations = get_docx_visual_locations(path, [original_results[index] for index in indices], extracted_text)
-			except Exception as exc:
-				log_exception("Folder Text Finder could not enrich DOCX result locations.")
-				last_error = str(exc)
-				continue
-			for local_index, location in locations.items():
-				page, visual_line = location
-				result_index = indices[local_index]
-				updated_results[result_index] = replace(original_results[result_index], page=page, line=visual_line, column=0, location_unit="Visual line")
-				updated_count += 1
-		if updated_count:
-			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
-		elif docx_count:
-			wx.CallAfter(self.report_word_location_enrichment_failed, last_error)
-
-	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
-		if self.results is not original_results:
-			return
-		self.results = updated_results
-		self.refresh_results_list()
-		ui.message(_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
-
-	def report_word_location_enrichment_failed(self, reason=None):
-		if reason:
-			ui.message(_("Word page and visual line numbers could not be added: {reason}").format(reason=reason))
-		else:
-			ui.message(_("Word page and visual line numbers could not be added. Try Open File on one result to test Word directly."))
 
 	def on_results_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
@@ -699,7 +649,7 @@ def open_result_file(result, extracted_text=None):
 				return
 		if open_docx_result_in_word(result, extracted_text):
 			return
-		ui.message(_("Could not ask Word for the visual line. Opened the file normally."))
+		ui.message(_("Could not open this DOCX in Word. Opened the file normally."))
 	open_file_or_select(result.path)
 
 
@@ -707,10 +657,11 @@ def open_docx_result_in_word(result, extracted_text):
 	try:
 		locations = get_docx_visual_locations(result.path, [result], extracted_text)
 		location = locations.get(0)
-		if not location:
-			return False
-		page, visual_line = location
-		ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
+		if location:
+			page, visual_line = location
+			ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
+		else:
+			ui.message(_("Opened in Word, but Word did not report a page or visual line."))
 		return True
 	except Exception:
 		log_exception("Folder Text Finder could not open DOCX result in Word.")
@@ -726,10 +677,7 @@ def get_word_application():
 		try:
 			import comtypes.client
 
-			try:
-				return comtypes.client.CreateObject("Word.Application", dynamic=True)
-			except TypeError:
-				return comtypes.client.CreateObject("Word.Application")
+			return comtypes.client.CreateObject("Word.Application")
 		except Exception as comtypes_error:
 			raise RuntimeError(f"win32com failed: {win32_error}; comtypes failed: {comtypes_error}") from comtypes_error
 
