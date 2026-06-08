@@ -145,7 +145,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		wx.CallAfter(self._show_dialog, folder)
 
 	def _show_dialog(self, folder):
-		if self._dialog and self._dialog:
+		if self._dialog:
 			try:
 				self._dialog.Destroy()
 			except Exception:
@@ -678,7 +678,7 @@ def select_docx_match_in_word(word, result, extracted_text):
 	find.Forward = True
 	find.Wrap = 0
 	occurrence = extracted_text[:result.start].count(matched_text) + 1
-	for _ in range(occurrence):
+	for _attempt in range(occurrence):
 		if not find.Execute():
 			return False
 	return True
