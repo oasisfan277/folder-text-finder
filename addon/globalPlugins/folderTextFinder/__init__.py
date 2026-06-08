@@ -74,19 +74,47 @@ def _initialize_config():
 		"allowDirectTabsAndLineBreaks": "boolean(default=False)",
 		"announceInvisibleCharacters": "boolean(default=False)",
 		"reportPageNumbers": "boolean(default=True)",
+		"searchWholeWord": "boolean(default=False)",
+		"searchCaseSensitive": "boolean(default=False)",
+		"searchIncludeSubfolders": "boolean(default=False)",
+		"searchFileFilters": "string(default='')",
 	}
+
+
+SETTING_DEFAULTS = {
+	"allowDirectTabsAndLineBreaks": False,
+	"announceInvisibleCharacters": False,
+	"reportPageNumbers": True,
+	"searchWholeWord": False,
+	"searchCaseSensitive": False,
+	"searchIncludeSubfolders": False,
+	"searchFileFilters": "",
+}
 
 
 def get_setting(name):
-	defaults = {
-		"allowDirectTabsAndLineBreaks": False,
-		"announceInvisibleCharacters": False,
-		"reportPageNumbers": True,
-	}
 	try:
 		return config.conf[CONFIG_SECTION][name]
 	except Exception:
-		return defaults[name]
+		return SETTING_DEFAULTS[name]
+
+
+def set_setting(name, value):
+	if config is None:
+		return
+	try:
+		config.conf[CONFIG_SECTION][name] = value
+	except Exception:
+		log_exception("Folder Text Finder could not save the {name} setting.".format(name=name))
+
+
+def save_config():
+	if config is None:
+		return
+	try:
+		config.conf.save()
+	except Exception:
+		log_exception("Folder Text Finder could not persist its configuration.")
 
 
 _initialize_config()
@@ -378,16 +406,20 @@ class FolderTextFinderDialog(wx.Dialog):
 		mainSizer.Add(self.previewCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
 		searchModeSizer = wx.StaticBoxSizer(wx.VERTICAL, self, _("Search mode"))
+		whole_word = get_setting("searchWholeWord")
 		self.exactFragmentCtrl = wx.RadioButton(self, label=_("Exact &fragment"), style=wx.RB_GROUP)
 		self.exactWholeWordCtrl = wx.RadioButton(self, label=_("Exact &whole word"))
-		self.exactFragmentCtrl.SetValue(True)
+		self.exactFragmentCtrl.SetValue(not whole_word)
+		self.exactWholeWordCtrl.SetValue(whole_word)
 		searchModeSizer.Add(self.exactFragmentCtrl, 0, wx.ALL, 4)
 		searchModeSizer.Add(self.exactWholeWordCtrl, 0, wx.ALL, 4)
 		self.caseCtrl = wx.CheckBox(self, label=_("&Case sensitive"))
+		self.caseCtrl.SetValue(get_setting("searchCaseSensitive"))
 		self.subfoldersCtrl = wx.CheckBox(self, label=_("Include &subfolders"))
+		self.subfoldersCtrl.SetValue(get_setting("searchIncludeSubfolders"))
 		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report &page numbers when available"))
 		self.reportPagesCtrl.SetValue(get_setting("reportPageNumbers"))
-		self.filterCtrl = wx.TextCtrl(self, value=DEFAULT_FILE_FILTERS)
+		self.filterCtrl = wx.TextCtrl(self, value=get_setting("searchFileFilters") or DEFAULT_FILE_FILTERS)
 
 		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
@@ -439,8 +471,17 @@ class FolderTextFinderDialog(wx.Dialog):
 			file_patterns=tuple(pattern.strip() for pattern in self.filterCtrl.GetValue().split(";") if pattern.strip()),
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
+		self._save_search_options(options)
 		thread = threading.Thread(target=self._run_search, args=(options,), daemon=True)
 		thread.start()
+
+	def _save_search_options(self, options):
+		set_setting("searchWholeWord", options.whole_word)
+		set_setting("searchCaseSensitive", options.case_sensitive)
+		set_setting("searchIncludeSubfolders", options.include_subfolders)
+		set_setting("searchFileFilters", self.filterCtrl.GetValue())
+		set_setting("reportPageNumbers", options.report_page_numbers)
+		save_config()
 
 	def on_query_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
@@ -483,16 +524,30 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.statistics = statistics
 		self.refresh_results_list()
 		self.searchButton.Enable()
-		if results:
+		if results and self._has_docx_results(results):
+			# Word visual line numbers load in the background. Hold the results
+			# announcement until they are ready, then reveal the results.
+			self.start_word_location_enrichment(results)
+		else:
+			self._reveal_results()
+
+	def _has_docx_results(self, results):
+		return any(result.path.suffix.lower() == ".docx" for result in results)
+
+	def _reveal_results(self, prefix=None):
+		if self.results:
 			self.resultsCtrl.SetSelection(0)
 			self.resultsCtrl.SetFocus()
-		ui.message(statistics.summary_message())
-		self.start_word_location_enrichment(results)
+		message = self.statistics.summary_message() if self.statistics else ""
+		if prefix:
+			message = "{prefix} {summary}".format(prefix=prefix, summary=message).strip()
+		if message:
+			ui.message(message)
 
 	def start_word_location_enrichment(self, results):
-		if not any(result.path.suffix.lower() == ".docx" for result in results):
+		if not self._has_docx_results(results):
 			return
-		ui.message(_("Finding Word page and visual line numbers in the background."))
+		ui.message(_("Getting Word page and visual line numbers. Please wait."))
 		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
 		thread.start()
 
@@ -529,20 +584,23 @@ class FolderTextFinderDialog(wx.Dialog):
 		if updated_count:
 			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
 		elif docx_count:
-			wx.CallAfter(self.report_word_location_enrichment_failed, last_error)
+			wx.CallAfter(self.report_word_location_enrichment_failed, original_results, last_error)
 
 	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
 		if self.results is not original_results:
 			return
 		self.results = updated_results
 		self.refresh_results_list()
-		ui.message(_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
+		self._reveal_results(prefix=_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
 
-	def report_word_location_enrichment_failed(self, reason=None):
+	def report_word_location_enrichment_failed(self, original_results, reason=None):
+		if self.results is not original_results:
+			return
 		if reason:
-			ui.message(_("Word page and visual line numbers could not be added in the background: {reason}").format(reason=reason))
+			ui.message(_("Word page and visual line numbers could not be added: {reason}").format(reason=reason))
 		else:
-			ui.message(_("Word page and visual line numbers could not be added in the background. Use Open File on one result to test Word directly."))
+			ui.message(_("Word page and visual line numbers could not be added. Use Open File on one result to test Word directly."))
+		self._reveal_results()
 
 	def refresh_results_list(self):
 		selection = self.resultsCtrl.GetSelection()
