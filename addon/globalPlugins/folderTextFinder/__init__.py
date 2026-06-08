@@ -719,16 +719,20 @@ def open_docx_result_in_word(result, extracted_text):
 
 def get_word_application():
 	try:
-		import comtypes.client
+		import win32com.client
 
-		return comtypes.client.CreateObject("Word.Application", dynamic=True)
-	except Exception:
+		return win32com.client.Dispatch("Word.Application")
+	except Exception as win32_error:
 		try:
-			import win32com.client
+			import comtypes.client
 
-			return win32com.client.Dispatch("Word.Application")
-		except Exception:
-			raise
+			try:
+				return comtypes.client.CreateObject("Word.Application", dynamic=True)
+			except TypeError:
+				return comtypes.client.CreateObject("Word.Application")
+		except Exception as comtypes_error:
+			raise RuntimeError(f"win32com failed: {win32_error}; comtypes failed: {comtypes_error}") from comtypes_error
+
 
 def open_file_or_select(path):
 	try:
