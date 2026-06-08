@@ -148,7 +148,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._dialog:
 			try:
 				self._dialog.Destroy()
-			except Exception:
+			except Exception as exc:
 				pass
 		self._dialog = FolderTextFinderDialog(gui.mainFrame, folder)
 		self._dialog.Bind(wx.EVT_WINDOW_DESTROY, self._on_dialog_destroy)
@@ -232,6 +232,7 @@ def get_foreground_explorer_folder_from_shell():
 				if int(window.HWND) == foreground_root:
 					return folder
 			except Exception:
+				last_error = str(exc)
 				continue
 		if len(selected_folders) == 1:
 			return selected_folders[0]
@@ -499,10 +500,9 @@ class FolderTextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetSelection(selection)
 
 	def start_word_location_enrichment(self, results):
-		if not self.reportPagesCtrl.GetValue():
-			return
 		if not any(result.path.suffix.lower() == ".docx" for result in results):
 			return
+		ui.message(_("Asking Word for page and visual line numbers."))
 		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
 		thread.start()
 
@@ -510,6 +510,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		updated_results = list(original_results)
 		updated_count = 0
 		docx_count = 0
+		last_error = None
 		indices_by_path = {}
 		for index, result in enumerate(original_results):
 			if result.path.suffix.lower() == ".docx":
@@ -519,8 +520,9 @@ class FolderTextFinderDialog(wx.Dialog):
 			try:
 				extracted_text = extract_text(path).text
 				locations = get_docx_visual_locations(path, [original_results[index] for index in indices], extracted_text)
-			except Exception:
+			except Exception as exc:
 				log_exception("Folder Text Finder could not enrich DOCX result locations.")
+				last_error = str(exc)
 				continue
 			for local_index, location in locations.items():
 				page, visual_line = location
@@ -530,7 +532,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		if updated_count:
 			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
 		elif docx_count:
-			wx.CallAfter(self.report_word_location_enrichment_failed)
+			wx.CallAfter(self.report_word_location_enrichment_failed, last_error)
 
 	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
 		if self.results is not original_results:
@@ -539,8 +541,11 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.refresh_results_list()
 		ui.message(_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
 
-	def report_word_location_enrichment_failed(self):
-		ui.message(_("Word page and visual line numbers could not be added. Open File can still ask Word for the selected result."))
+	def report_word_location_enrichment_failed(self, reason=None):
+		if reason:
+			ui.message(_("Word page and visual line numbers could not be added: {reason}").format(reason=reason))
+		else:
+			ui.message(_("Word page and visual line numbers could not be added. Try Open File on one result to test Word directly."))
 
 	def on_results_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
