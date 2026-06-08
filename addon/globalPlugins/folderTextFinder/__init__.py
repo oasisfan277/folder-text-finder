@@ -516,7 +516,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		result = self.get_selected_result()
 		if result is None:
 			return
-		open_file_or_select(result.path)
+		open_result_file(result)
 
 	def get_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
@@ -560,11 +560,71 @@ class ResultLocationDialog(wx.Dialog):
 		self.textCtrl.SetFocus()
 		self.textCtrl.SetInsertionPoint(start)
 		self.textCtrl.SetSelection(start, end)
-		ui.message(_("Result opened at line {line}, column {column}.").format(line=self.result.line, column=self.result.column))
+		if self.result.location_unit == "Open Result":
+			ui.message(_("Result opened at the exact match."))
+		else:
+			ui.message(_("Result opened at line {line}, column {column}.").format(line=self.result.line, column=self.result.column))
 
 	def on_open_file(self, evt):
-		open_file_or_select(self.result.path)
+		open_result_file(self.result, self.text)
 
+
+def open_result_file(result, extracted_text=None):
+	if result.path.suffix.lower() == ".docx":
+		if extracted_text is None:
+			try:
+				extracted_text = extract_text(result.path).text
+			except Exception:
+				log_exception("Folder Text Finder could not extract DOCX text before opening in Word.")
+				open_file_or_select(result.path)
+				return
+		if open_docx_result_in_word(result, extracted_text):
+			return
+		ui.message(_("Could not ask Word for the visual line. Opened the file normally."))
+	open_file_or_select(result.path)
+
+
+def open_docx_result_in_word(result, extracted_text):
+	matched_text = extracted_text[result.start:result.end]
+	if not matched_text:
+		return False
+	try:
+		word = get_word_application()
+		word.Visible = True
+		document = word.Documents.Open(str(result.path))
+		document.Activate()
+		selection = word.Selection
+		selection.HomeKey(Unit=6)
+		find = selection.Find
+		find.ClearFormatting()
+		find.Text = matched_text
+		find.Forward = True
+		find.Wrap = 0
+		occurrence = extracted_text[:result.start].count(matched_text) + 1
+		for _ in range(occurrence):
+			if not find.Execute():
+				return False
+		page = selection.Information(3)
+		visual_line = selection.Information(10)
+		ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
+		return True
+	except Exception:
+		log_exception("Folder Text Finder could not open DOCX result in Word.")
+		return False
+
+
+def get_word_application():
+	try:
+		import comtypes.client
+
+		return comtypes.client.CreateObject("Word.Application", dynamic=True)
+	except Exception:
+		try:
+			import win32com.client
+
+			return win32com.client.Dispatch("Word.Application")
+		except Exception:
+			raise
 
 def open_file_or_select(path):
 	try:
