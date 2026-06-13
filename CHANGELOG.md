@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- Added cautious plain-text fallback for specifically targeted unknown-extension files, so files that open as text in Notepad can be searched without scanning binary files in folder searches.
+- Kept binary-looking unknown files skipped to avoid trying to search music, pictures, and other non-text files.
+
 ## 0.3.1
 
 - Made file-type choices in the settings panel announce their selected or not selected state in the item text for screen reader users.

@@ -120,7 +120,7 @@ class Searcher:
 				if path.stat().st_size > self.options.max_file_size:
 					statistics.unreadable_files.append((path, "File is larger than the configured maximum size."))
 					continue
-				extracted = extract_text(path)
+				extracted = extract_text(path, allow_text_fallback=self.target.is_file())
 			except TextExtractionError as exc:
 				if exc.reason == "unsupported":
 					statistics.unsupported_files.append((path, exc.message))

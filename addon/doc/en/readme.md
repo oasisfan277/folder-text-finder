@@ -78,7 +78,7 @@ Text Finder searches common files with extractable text, including plain text, s
 
 Excel and PowerPoint support covers the modern .xlsx and .pptx formats. The older binary .xls and .ppt formats are not searched.
 
-Image-only or scanned PDFs are not OCR'd.
+Image-only or scanned PDFs are not OCR'd. Unknown-extension files are not scanned during folder searches; they are only tried when you target that one file, and only if the file sample looks like text rather than binary data.
 
 ## Search Statistics
 

@@ -127,6 +127,26 @@ def test_searcher_searches_single_file_even_when_filter_excludes_it():
 		assert results[0].path == path
 		assert statistics.supported_files_searched == 1
 
+
+def test_searcher_searches_targeted_unknown_extension_text_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "notes.readmefile"
+		path.write_text("needle in plain text", encoding="utf-8")
+		results, statistics = Searcher(path, SearchOptions(query="needle", file_patterns=("*.docx",))).search()
+		assert len(results) == 1
+		assert results[0].path == path
+		assert statistics.supported_files_searched == 1
+
+
+def test_searcher_skips_targeted_unknown_extension_binary_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "sound.musicfile"
+		path.write_bytes(b"\x00\x01\x02\x03not text")
+		results, statistics = Searcher(path, SearchOptions(query="text", file_patterns=("*.txt",))).search()
+		assert results == []
+		assert statistics.supported_files_searched == 0
+		assert len(statistics.unsupported_files) == 1
+
 def test_format_result_for_list_contains_location_and_preview():
 	result = SearchResult(path=Path("book.txt"), line=3, column=5, preview="matching text")
 	formatted = format_result_for_list(result)

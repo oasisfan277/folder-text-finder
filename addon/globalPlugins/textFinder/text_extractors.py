@@ -73,7 +73,7 @@ class TextExtractionError(Exception):
 		self.message = message
 
 
-def extract_text(path: Path) -> ExtractedText:
+def extract_text(path: Path, allow_text_fallback: bool = False) -> ExtractedText:
 	extension = path.suffix.lower()
 	if extension in PLAIN_TEXT_EXTENSIONS:
 		return extract_plain_text(path)
@@ -91,8 +91,28 @@ def extract_text(path: Path) -> ExtractedText:
 		return extract_pptx(path)
 	if extension == ".pdf":
 		return extract_pdf(path)
+	if allow_text_fallback and looks_like_text_file(path):
+		return extract_plain_text(path)
 	raise TextExtractionError("unsupported", "Unsupported file type.")
 
+
+
+def looks_like_text_file(path: Path, sample_size: int = 4096) -> bool:
+	try:
+		sample = path.read_bytes()[:sample_size]
+	except OSError:
+		return False
+	if not sample:
+		return True
+	if b"\x00" in sample:
+		return False
+	control_bytes = 0
+	for byte in sample:
+		if byte in (9, 10, 12, 13):
+			continue
+		if byte < 32 or byte == 127:
+			control_bytes += 1
+	return control_bytes / len(sample) < 0.05
 
 def extract_plain_text(path: Path) -> ExtractedText:
 	return ExtractedText(read_text_file(path))
