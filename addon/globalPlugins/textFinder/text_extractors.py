@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import html
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -133,12 +137,23 @@ def read_text_file(path: Path) -> str:
 
 def extract_docx(path: Path) -> ExtractedText:
 	try:
+		return extract_docx_from_zip(path)
+	except PermissionError:
+		return extract_docx_from_locked_file(path)
+
+
+def extract_docx_from_zip(path: Path) -> ExtractedText:
+	try:
 		with zipfile.ZipFile(path) as archive:
 			xml = archive.read("word/document.xml")
 	except KeyError as exc:
 		raise TextExtractionError("empty", "DOCX document text was not found.") from exc
 	except zipfile.BadZipFile as exc:
 		raise TextExtractionError("unreadable", "DOCX file is not a valid zip document.") from exc
+	return extract_docx_from_document_xml(xml)
+
+
+def extract_docx_from_document_xml(xml: bytes | str) -> ExtractedText:
 	root = ElementTree.fromstring(xml)
 	namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 	paragraphs = []
@@ -157,6 +172,62 @@ def extract_docx(path: Path) -> ExtractedText:
 	if not text.strip():
 		raise TextExtractionError("empty", "No extractable text found.")
 	return ExtractedText(text)
+
+
+def extract_docx_from_locked_file(path: Path) -> ExtractedText:
+	try:
+		with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+			temp_path = Path(temp_file.name)
+		shutil.copyfile(path, temp_path)
+		try:
+			return extract_docx_from_zip(temp_path)
+		finally:
+			try:
+				temp_path.unlink()
+			except OSError:
+				pass
+	except Exception:
+		pass
+	return extract_docx_with_powershell(path)
+
+
+def extract_docx_with_powershell(path: Path) -> ExtractedText:
+	command = DOCX_POWERSHELL_READER.format(path=str(path).replace("'", "''"))
+	try:
+		completed = subprocess.run(
+			["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+			capture_output=True,
+			text=True,
+			encoding="utf-8",
+			errors="replace",
+			timeout=30,
+			creationflags=get_hidden_process_flags(),
+		)
+	except Exception as exc:
+		raise TextExtractionError("unreadable", f"DOCX file could not be read while open in Word: {exc}") from exc
+	if completed.returncode != 0:
+		reason = completed.stderr.strip() or completed.stdout.strip() or "PowerShell could not read the DOCX file."
+		raise TextExtractionError("unreadable", reason)
+	return extract_docx_from_document_xml(completed.stdout)
+
+
+def get_hidden_process_flags() -> int:
+	return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+DOCX_POWERSHELL_READER = r'''
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead('{path}')
+try {{
+	$entry = $zip.GetEntry('word/document.xml')
+	if ($null -eq $entry) {{ throw 'DOCX document text was not found.' }}
+	$reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+	try {{ $reader.ReadToEnd() }} finally {{ $reader.Dispose() }}
+}} finally {{
+	$zip.Dispose()
+}}
+'''
 
 
 def extract_odt(path: Path) -> ExtractedText:
@@ -319,4 +390,3 @@ def rtf_to_text(source: str) -> str:
 	if not text:
 		raise TextExtractionError("empty", "No extractable text found.")
 	return text
-

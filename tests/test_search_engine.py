@@ -3,6 +3,7 @@ import zipfile
 from pathlib import Path
 
 from scripts.package_addon import build_package
+from addon.globalPlugins.textFinder import text_extractors as text_extractors_module
 from addon.globalPlugins.textFinder.search_engine import (
 	SearchOptions,
 	SearchResult,
@@ -28,6 +29,7 @@ from addon.globalPlugins.textFinder import (
 from addon.globalPlugins.textFinder.text_extractors import (
 	ExtractedText,
 	all_supported_extensions,
+	extract_docx,
 	extract_text,
 )
 
@@ -166,6 +168,29 @@ def test_normalize_search_folder_uses_parent_for_file():
 
 
 
+
+
+def test_docx_permission_error_uses_locked_file_fallback():
+	original_zip = text_extractors_module.extract_docx_from_zip
+	original_locked = text_extractors_module.extract_docx_from_locked_file
+	calls = []
+
+	def fake_zip(path):
+		raise PermissionError("locked")
+
+	def fake_locked(path):
+		calls.append(path)
+		return ExtractedText("cat")
+
+	text_extractors_module.extract_docx_from_zip = fake_zip
+	text_extractors_module.extract_docx_from_locked_file = fake_locked
+	try:
+		path = Path("book.docx")
+		assert extract_docx(path).text == "cat"
+		assert calls == [path]
+	finally:
+		text_extractors_module.extract_docx_from_zip = original_zip
+		text_extractors_module.extract_docx_from_locked_file = original_locked
 def test_searcher_accepts_string_file_target():
 	with tempfile.TemporaryDirectory() as temp_dir:
 		path = Path(temp_dir) / "chapter.txt"
