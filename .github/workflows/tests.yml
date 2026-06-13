@@ -1,4 +1,4 @@
-﻿name: Tests
+name: Tests
 
 on:
   push:
@@ -29,5 +29,5 @@ jobs:
       - name: Upload NVDA add-on package
         uses: actions/upload-artifact@v4
         with:
-          name: folder-text-finder-nvda-addon
+          name: text-finder-nvda-addon
           path: dist/*.nvda-addon

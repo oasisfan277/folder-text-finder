@@ -68,7 +68,7 @@ except NameError:
 	_ = lambda text: text
 
 
-CONFIG_SECTION = "folderTextFinder"
+CONFIG_SECTION = "textFinder"
 
 
 def _initialize_config():
@@ -180,19 +180,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def __init__(self):
 		super().__init__()
 		self._dialog = None
-		if NVDASettingsDialog and FolderTextFinderSettingsPanel not in NVDASettingsDialog.categoryClasses:
-			NVDASettingsDialog.categoryClasses.append(FolderTextFinderSettingsPanel)
+		if NVDASettingsDialog and TextFinderSettingsPanel not in NVDASettingsDialog.categoryClasses:
+			NVDASettingsDialog.categoryClasses.append(TextFinderSettingsPanel)
 
 	def terminate(self):
-		if NVDASettingsDialog and FolderTextFinderSettingsPanel in NVDASettingsDialog.categoryClasses:
-			NVDASettingsDialog.categoryClasses.remove(FolderTextFinderSettingsPanel)
+		if NVDASettingsDialog and TextFinderSettingsPanel in NVDASettingsDialog.categoryClasses:
+			NVDASettingsDialog.categoryClasses.remove(TextFinderSettingsPanel)
 		super().terminate()
 
 	@scriptHandler.script(
 		description=_("Search files containing text in the current File Explorer folder"),
 		gesture="kb:NVDA+alt+f",
 	)
-	def script_openFolderTextFinder(self, gesture):
+	def script_openTextFinder(self, gesture):
 		ui.message(_("Text Finder starting."))
 		log_info("Text Finder command started.")
 		try:
@@ -214,7 +214,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._dialog.Destroy()
 			except Exception as exc:
 				pass
-		self._dialog = FolderTextFinderDialog(gui.mainFrame, folder)
+		self._dialog = TextFinderDialog(gui.mainFrame, folder)
 		self._dialog.Bind(wx.EVT_WINDOW_DESTROY, self._on_dialog_destroy)
 		self._dialog.present()
 
@@ -224,7 +224,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		evt.Skip()
 
 
-class FolderTextFinderSettingsPanel(SettingsPanel):
+class TextFinderSettingsPanel(SettingsPanel):
 	title = _("Text Finder")
 
 	def makeSettings(self, settingsSizer):
@@ -448,7 +448,7 @@ def log_shell_window_diagnostics(log):
 	except Exception:
 		log.info("Text Finder shell diagnostics failed:\n%s", traceback.format_exc())
 
-class FolderTextFinderDialog(wx.Dialog):
+class TextFinderDialog(wx.Dialog):
 	def __init__(self, parent, folder):
 		super().__init__(parent, title=_("Text Finder"))
 		self.folder = folder

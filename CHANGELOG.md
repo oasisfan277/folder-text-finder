@@ -2,7 +2,7 @@
 
 ## 0.3.0
 
-- Renamed the add-on from Folder Text Finder to Text Finder.
+- Completed the rename to Text Finder across the add-on ID, package name, plugin folder, metadata, and documentation.
 - Added searching of modern Excel workbooks (.xlsx) and PowerPoint presentations (.pptx), read locally without Microsoft Office. The older binary .xls and .ppt formats are not searched.
 - Moved the file-type choice out of the search dialog and into the NVDA settings panel, where you can search all supported file types or tick only the specific types you want. The choice persists across NVDA sessions.
 

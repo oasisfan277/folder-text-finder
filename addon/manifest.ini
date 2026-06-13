@@ -1,8 +1,8 @@
-name = folderTextFinder
+name = textFinder
 summary = "Text Finder"
 description = "Search files containing text in the current File Explorer folder."
 author = "Tara"
-url = https://github.com/oasisfan277/folder-text-finder
+url = https://github.com/oasisfan277/text-finder
 version = 0.3.0
 docFileName = readme.html
 minimumNVDAVersion = 2024.1

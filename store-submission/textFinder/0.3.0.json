@@ -1,5 +1,5 @@
-﻿{
-	"addonId": "folderTextFinder",
+{
+	"addonId": "textFinder",
 	"addonVersionNumber": {
 		"major": 0,
 		"minor": 3,
@@ -9,7 +9,7 @@
 	"displayName": "Text Finder",
 	"publisher": "Tara",
 	"description": "Search files containing text in the current File Explorer folder.",
-	"homepage": "https://github.com/oasisfan277/folder-text-finder",
+	"homepage": "https://github.com/oasisfan277/text-finder",
 	"minNVDAVersion": {
 		"major": 2024,
 		"minor": 1,
@@ -21,9 +21,9 @@
 		"patch": 0
 	},
 	"channel": "stable",
-	"URL": "https://github.com/oasisfan277/folder-text-finder/releases/download/v0.3.0/folderTextFinder-0.3.0.nvda-addon",
-	"sha256": "7F0F100DCD387892024667B10544C17E2B88E1E8B83873DB713AEE64D1B402A0",
-	"sourceURL": "https://github.com/oasisfan277/folder-text-finder",
+	"URL": "https://github.com/oasisfan277/text-finder/releases/download/v0.3.0/textFinder-0.3.0.nvda-addon",
+	"sha256": "DD094EC6387BB0B19BF6634B3B96373F63303860AA1DD6B6AA0C5F629B917527",
+	"sourceURL": "https://github.com/oasisfan277/text-finder",
 	"license": "GPL v2",
 	"licenseURL": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html",
 	"translations": []

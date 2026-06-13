@@ -3,7 +3,7 @@ import zipfile
 from pathlib import Path
 
 from scripts.package_addon import build_package
-from addon.globalPlugins.folderTextFinder.search_engine import (
+from addon.globalPlugins.textFinder.search_engine import (
 	SearchOptions,
 	SearchResult,
 	find_matches,
@@ -11,7 +11,7 @@ from addon.globalPlugins.folderTextFinder.search_engine import (
 	literal_spans,
 	preview_for_span,
 )
-from addon.globalPlugins.folderTextFinder import (
+from addon.globalPlugins.textFinder import (
 	format_result_for_list,
 	get_active_file_patterns,
 	normalize_search_folder,
@@ -19,7 +19,7 @@ from addon.globalPlugins.folderTextFinder import (
 	path_from_shell_location_url,
 	render_invisible_text,
 )
-from addon.globalPlugins.folderTextFinder.text_extractors import (
+from addon.globalPlugins.textFinder.text_extractors import (
 	ExtractedText,
 	all_supported_extensions,
 	extract_text,
@@ -82,7 +82,7 @@ def test_package_contains_manifest_plugin_and_html_guide():
 	with zipfile.ZipFile(package) as archive:
 		names = set(archive.namelist())
 	assert "manifest.ini" in names
-	assert "globalPlugins/folderTextFinder/__init__.py" in names
+	assert "globalPlugins/textFinder/__init__.py" in names
 	assert "doc/en/readme.html" in names
 
 
