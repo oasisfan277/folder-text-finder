@@ -868,7 +868,7 @@ class TextFinderDialog(wx.Dialog):
 					if word is None:
 						word = get_word_application(new_instance=True)
 						word.Visible = False
-					document = word.Documents.Open(str(path))
+					document = open_word_document_read_only(word, path)
 					try:
 						document.Activate()
 						locations = collect_docx_visual_locations(word, [original_results[index] for index in indices], extracted_text)
@@ -1058,7 +1058,7 @@ def get_docx_visual_locations(path, results, extracted_text, visible=True, close
 	try:
 		word = get_word_application(new_instance=not visible or quit_word)
 		word.Visible = visible
-		document = word.Documents.Open(str(path))
+		document = open_word_document_read_only(word, path)
 		document.Activate()
 		return collect_docx_visual_locations(word, results, extracted_text)
 	finally:
@@ -1074,6 +1074,12 @@ def get_docx_visual_locations(path, results, extracted_text, visible=True, close
 				log_exception("Text Finder could not close the hidden Word application.")
 		uninitialize_com()
 
+
+def open_word_document_read_only(word, path):
+	# FileName, ConfirmConversions, ReadOnly, AddToRecentFiles.
+	# ReadOnly lets Word report page and visual line information even when the
+	# user already has the document open for editing.
+	return word.Documents.Open(str(path), False, True, False)
 
 def collect_docx_visual_locations(word, results, extracted_text):
 	# Walk the document forward once, mapping each result to the page and visual

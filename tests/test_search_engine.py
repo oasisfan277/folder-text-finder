@@ -20,6 +20,7 @@ from addon.globalPlugins.textFinder import (
 	get_active_file_patterns,
 	get_word_active_document_path,
 	word_file_name_from_object_name,
+	open_word_document_read_only,
 	normalize_search_folder,
 	normalize_search_target,
 	parse_extension_list,
@@ -54,6 +55,24 @@ class _NoProtectedViewWindows:
 
 
 
+
+
+def test_open_word_document_read_only_uses_read_only_flags():
+	class FakeDocuments:
+		def __init__(self):
+			self.calls = []
+
+		def Open(self, *args):
+			self.calls.append(args)
+			return "document"
+
+	class FakeWord:
+		def __init__(self):
+			self.Documents = FakeDocuments()
+
+	word = FakeWord()
+	assert open_word_document_read_only(word, Path("book.docx")) == "document"
+	assert word.Documents.calls == [("book.docx", False, True, False)]
 def test_word_file_name_from_word_window_title():
 	assert word_file_name_from_object_name("Grimm fairytales for bookclub.docx - Word") == "Grimm fairytales for bookclub.docx"
 

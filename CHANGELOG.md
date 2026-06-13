@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.10
+
+- Opened Word documents read-only for page and visual line lookup, so results from an already-open document can still get Word page and visual line numbers.
+
 ## 0.3.9
 
 - Updated the locked Word document fallback to open DOCX files with shared read access, so files already open in Word can still be searched.
