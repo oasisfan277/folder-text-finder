@@ -429,8 +429,21 @@ def normalize_search_folder(candidate):
 
 def get_open_document_target():
 	app_name = get_foreground_app_name()
-	if app_name in {"winword", "excel", "powerpnt"}:
-		target = get_office_active_document_target(app_name)
+	app_order = []
+	if app_name in {"winword", "word"}:
+		app_order.append("winword")
+	elif app_name in {"excel"}:
+		app_order.append("excel")
+	elif app_name in {"powerpnt", "powerpoint"}:
+		app_order.append("powerpnt")
+	# If NVDA does not expose the app name clearly, try the common Office apps
+	# without starting new instances. get_running_com_application only attaches
+	# to an already-running app.
+	for fallback in ("winword", "excel", "powerpnt"):
+		if fallback not in app_order:
+			app_order.append(fallback)
+	for office_app in app_order:
+		target = get_office_active_document_target(office_app)
 		if target:
 			return target
 	return None
@@ -440,7 +453,7 @@ def get_foreground_app_name():
 	try:
 		import api
 
-		for obj in (api.getFocusObject(), api.getForegroundObject()):
+		for obj in (api.getFocusObject(), api.getForegroundObject(), api.getNavigatorObject()):
 			app_module = getattr(obj, "appModule", None)
 			app_name = getattr(app_module, "appName", None)
 			if app_name:
@@ -452,20 +465,51 @@ def get_foreground_app_name():
 
 def get_office_active_document_target(app_name):
 	try:
-		import win32com.client
-
 		if app_name == "winword":
-			word = win32com.client.Dispatch("Word.Application")
-			return normalize_search_target(word.ActiveDocument.FullName)
+			word = get_running_com_application("Word.Application")
+			return get_word_active_document_path(word)
 		if app_name == "excel":
-			excel = win32com.client.Dispatch("Excel.Application")
+			excel = get_running_com_application("Excel.Application")
 			return normalize_search_target(excel.ActiveWorkbook.FullName)
 		if app_name == "powerpnt":
-			powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+			powerpoint = get_running_com_application("PowerPoint.Application")
 			return normalize_search_target(powerpoint.ActivePresentation.FullName)
 	except Exception:
 		log_exception("Text Finder could not detect the active Office document.")
 	return None
+
+
+def get_running_com_application(prog_id):
+	try:
+		import win32com.client
+
+		return win32com.client.GetActiveObject(prog_id)
+	except Exception as win32_error:
+		try:
+			import comtypes.client
+
+			return comtypes.client.GetActiveObject(prog_id)
+		except Exception as comtypes_error:
+			raise RuntimeError(f"win32com failed: {win32_error}; comtypes failed: {comtypes_error}") from comtypes_error
+
+
+def get_word_active_document_path(word):
+	try:
+		path = normalize_search_target(word.ActiveDocument.FullName)
+		if path:
+			return path
+	except Exception:
+		pass
+	try:
+		if word.ProtectedViewWindows.Count:
+			path = normalize_search_target(word.ActiveProtectedViewWindow.Document.FullName)
+			if path:
+				return path
+	except Exception:
+		pass
+	return None
+
+
 def log_folder_detection_diagnostics():
 	try:
 		import api

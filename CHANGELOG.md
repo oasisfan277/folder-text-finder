@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Improved open Microsoft Word document detection by attaching to the running Word instance instead of relying only on NVDA's foreground app name.
+
 ## 0.3.3
 
 - Fixed the file type settings list so turning off Search all supported file types clears the list, letting users choose only the file types they want.

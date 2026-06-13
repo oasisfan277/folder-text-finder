@@ -17,6 +17,7 @@ from addon.globalPlugins.textFinder import (
 	file_type_is_selected,
 	format_result_for_list,
 	get_active_file_patterns,
+	get_word_active_document_path,
 	normalize_search_folder,
 	normalize_search_target,
 	parse_extension_list,
@@ -31,6 +32,36 @@ from addon.globalPlugins.textFinder.text_extractors import (
 
 
 
+
+class _FakeWordDocument:
+	def __init__(self, path):
+		self.FullName = str(path)
+
+
+class _FakeWord:
+	def __init__(self, path):
+		self.ActiveDocument = _FakeWordDocument(path)
+
+
+class _NoProtectedViewWindows:
+	Count = 0
+
+
+def test_word_active_document_path_uses_active_document():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book.docx"
+		path.write_text("placeholder", encoding="utf-8")
+		assert get_word_active_document_path(_FakeWord(path)) == str(path)
+
+
+def test_word_active_document_path_returns_none_for_unsaved_document():
+	class UnsavedWord:
+		ProtectedViewWindows = _NoProtectedViewWindows()
+		@property
+		def ActiveDocument(self):
+			raise RuntimeError("unsaved")
+
+	assert get_word_active_document_path(UnsavedWord()) is None
 def test_file_type_choice_label_includes_selection_state():
 	assert file_type_choice_label("Word documents (.docx)", True) == "Selected: Word documents (.docx)"
 	assert file_type_choice_label("PDF documents (.pdf)", False) == "Not selected: PDF documents (.pdf)"
