@@ -14,6 +14,7 @@ from addon.globalPlugins.textFinder.search_engine import (
 )
 from addon.globalPlugins.textFinder import (
 	file_type_choice_label,
+	file_type_is_selected,
 	format_result_for_list,
 	get_active_file_patterns,
 	normalize_search_folder,
@@ -34,6 +35,11 @@ def test_file_type_choice_label_includes_selection_state():
 	assert file_type_choice_label("Word documents (.docx)", True) == "Selected: Word documents (.docx)"
 	assert file_type_choice_label("PDF documents (.pdf)", False) == "Not selected: PDF documents (.pdf)"
 
+
+def test_file_type_selection_helper_clears_when_search_all_is_off():
+	assert file_type_is_selected(True, set(), (".txt",)) is True
+	assert file_type_is_selected(False, set(), (".txt",)) is False
+	assert file_type_is_selected(False, {".txt"}, (".txt", ".log")) is True
 def test_literal_search_matches_punctuation_and_partial_words():
 	text = "alpha C:\\Users\\Tara\\file-name.txt omega"
 	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="file-name.txt")))

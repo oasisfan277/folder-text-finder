@@ -129,6 +129,9 @@ def get_active_file_patterns():
 
 
 
+def file_type_is_selected(search_all, selected_extensions, extensions):
+	return search_all or any(ext in selected_extensions for ext in extensions)
+
 def file_type_choice_label(label, selected):
 	state = _("Selected") if selected else _("Not selected")
 	return _("{state}: {label}").format(state=state, label=label)
@@ -266,14 +269,14 @@ class TextFinderSettingsPanel(SettingsPanel):
 		selected_extensions = set(parse_extension_list(get_setting("searchFileTypes")))
 		select_all_types = get_setting("searchAllFileTypes")
 		for index, (_label, extensions) in enumerate(SUPPORTED_FILE_TYPES):
-			self.fileTypesCtrl.Check(index, select_all_types or any(ext in selected_extensions for ext in extensions))
+			self.fileTypesCtrl.Check(index, file_type_is_selected(select_all_types, selected_extensions, extensions))
 		self._update_file_type_choice_labels()
 		self._update_file_types_enabled()
 
 	def on_toggle_all_file_types(self, evt):
-		if self.searchAllFileTypesCtrl.GetValue():
-			for index in range(len(SUPPORTED_FILE_TYPES)):
-				self.fileTypesCtrl.Check(index, True)
+		check_all = self.searchAllFileTypesCtrl.GetValue()
+		for index in range(len(SUPPORTED_FILE_TYPES)):
+			self.fileTypesCtrl.Check(index, check_all)
 		self._update_file_type_choice_labels()
 		self._update_file_types_enabled()
 		evt.Skip()

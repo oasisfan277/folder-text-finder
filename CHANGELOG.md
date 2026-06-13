@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Fixed the file type settings list so turning off Search all supported file types clears the list, letting users choose only the file types they want.
+
 ## 0.3.2
 
 - Added cautious plain-text fallback for specifically targeted unknown-extension files, so files that open as text in Notepad can be searched without scanning binary files in folder searches.
