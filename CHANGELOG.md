@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.27
+
+- Clarified folder search summaries by reporting both searched file types and match counts by file type.
+
 ## 0.3.26
 
 - Added match counts by file type to search summaries and used Windows recent PDFs as another fallback for browser-opened PDF detection.

@@ -57,6 +57,7 @@ class SearchStatistics:
 	matches_found: int = 0
 	files_with_matches: set[Path] = field(default_factory=set)
 	matches_by_extension: Counter = field(default_factory=Counter)
+	searched_by_extension: Counter = field(default_factory=Counter)
 	supported_files_searched: int = 0
 	unsupported_files: list[tuple[Path, str]] = field(default_factory=list)
 	no_extractable_text_files: list[tuple[Path, str]] = field(default_factory=list)
@@ -82,7 +83,10 @@ class SearchStatistics:
 			start = "Search complete. No matches found."
 		type_summary = self.match_type_summary()
 		if type_summary:
-			start = f"{start} {type_summary}."
+			start = f"{start} Matches by file type: {type_summary}."
+		searched_summary = self.searched_type_summary()
+		if searched_summary:
+			start = f"{start} Searched file types: {searched_summary}."
 		return (
 			f"{start} {self.supported_files_searched} supported files searched. "
 			f"{len(self.unsupported_files)} unsupported files skipped. "
@@ -117,6 +121,7 @@ class SearchStatistics:
 			f"Matches found: {self.matches_found}",
 			f"Files containing matches: {len(self.files_with_matches)}",
 			f"Matches by file type: {self.match_type_summary() or 'none'}",
+			f"Searched file types: {self.searched_type_summary() or 'none'}",
 			f"Supported files searched: {self.supported_files_searched}",
 			f"Unsupported files skipped: {len(self.unsupported_files)}",
 			f"Files with no extractable text: {len(self.no_extractable_text_files)}",
@@ -136,13 +141,22 @@ class SearchStatistics:
 			lines.extend([str(path), f"Reason: {reason}", ""])
 
 	def match_type_summary(self) -> str:
-		if not self.matches_by_extension:
-			return ""
-		parts = []
-		for extension, count in sorted(self.matches_by_extension.items()):
-			label = extension.upper().lstrip(".") if extension else "unknown"
-			parts.append(f"{count} {label}")
-		return ", ".join(parts)
+		return extension_count_summary(self.matches_by_extension)
+
+	def searched_type_summary(self) -> str:
+		return extension_count_summary(self.searched_by_extension, include_files=True)
+
+
+def extension_count_summary(counts: Counter, include_files: bool = False) -> str:
+	if not counts:
+		return ""
+	parts = []
+	for extension, count in sorted(counts.items()):
+		label = extension.upper().lstrip(".") if extension else "unknown"
+		file_word = "file" if count == 1 else "files"
+		suffix = f" {file_word}" if include_files else ""
+		parts.append(f"{count} {label}{suffix}")
+	return ", ".join(parts)
 
 
 class Searcher:
@@ -180,6 +194,7 @@ class Searcher:
 			if should_cancel and should_cancel():
 				break
 			statistics.supported_files_searched += 1
+			statistics.searched_by_extension[path.suffix.lower()] += 1
 			file_results = list(find_matches(path, extracted, self.options))
 			results.extend(file_results)
 			if file_results:

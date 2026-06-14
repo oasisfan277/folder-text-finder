@@ -505,7 +505,9 @@ def test_folder_statistics_include_match_counts_by_file_type():
 		assert len(results) == 2
 		assert "1 MD" in statistics.summary_message()
 		assert "1 TXT" in statistics.summary_message()
+		assert "Searched file types: 1 MD file, 1 TXT file" in statistics.summary_message()
 		assert "Matches by file type:" in statistics.to_report()
+		assert "Searched file types: 1 MD file, 1 TXT file" in statistics.to_report()
 
 
 def test_single_file_statistics_report_unreadable_file():
