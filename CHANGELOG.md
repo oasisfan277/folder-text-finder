@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.12
+
+- Added Escape to close Text Finder windows, a Go to Search Result button for Word results, and moved selected file types to the top of the settings list when Search all supported file types is off.
+
 ## 0.3.11
 
 - Used the already-open Word document for page and visual line lookup before falling back to opening a separate read-only document.

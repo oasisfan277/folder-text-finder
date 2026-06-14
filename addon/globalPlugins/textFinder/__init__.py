@@ -138,6 +138,20 @@ def file_type_choice_label(label, selected):
 	state = _("Selected") if selected else _("Not selected")
 	return _("{state}: {label}").format(state=state, label=label)
 
+
+def ordered_supported_file_types(search_all, selected_extensions):
+	if search_all or not selected_extensions:
+		return list(SUPPORTED_FILE_TYPES)
+	selected = []
+	unselected = []
+	for label, extensions in SUPPORTED_FILE_TYPES:
+		if any(ext in selected_extensions for ext in extensions):
+			selected.append((label, extensions))
+		else:
+			unselected.append((label, extensions))
+	return selected + unselected
+
+
 def get_setting(name):
 	try:
 		return config.conf[CONFIG_SECTION][name]
@@ -262,22 +276,23 @@ class TextFinderSettingsPanel(SettingsPanel):
 		self.searchAllFileTypesCtrl.SetValue(get_setting("searchAllFileTypes"))
 		self.searchAllFileTypesCtrl.Bind(wx.EVT_CHECKBOX, self.on_toggle_all_file_types)
 
+		selected_extensions = set(parse_extension_list(get_setting("searchFileTypes")))
+		select_all_types = get_setting("searchAllFileTypes")
+		self.fileTypeChoices = ordered_supported_file_types(select_all_types, selected_extensions)
 		self.fileTypesCtrl = settingsSizerHelper.addLabeledControl(
 			_("File types to search:"),
 			wx.CheckListBox,
-			choices=[file_type_choice_label(label, False) for label, _extensions in SUPPORTED_FILE_TYPES],
+			choices=[file_type_choice_label(label, False) for label, _extensions in self.fileTypeChoices],
 		)
 		self.fileTypesCtrl.Bind(wx.EVT_CHECKLISTBOX, self.on_file_type_checked)
-		selected_extensions = set(parse_extension_list(get_setting("searchFileTypes")))
-		select_all_types = get_setting("searchAllFileTypes")
-		for index, (_label, extensions) in enumerate(SUPPORTED_FILE_TYPES):
+		for index, (_label, extensions) in enumerate(self.fileTypeChoices):
 			self.fileTypesCtrl.Check(index, file_type_is_selected(select_all_types, selected_extensions, extensions))
 		self._update_file_type_choice_labels()
 		self._update_file_types_enabled()
 
 	def on_toggle_all_file_types(self, evt):
 		check_all = self.searchAllFileTypesCtrl.GetValue()
-		for index in range(len(SUPPORTED_FILE_TYPES)):
+		for index in range(len(self.fileTypeChoices)):
 			self.fileTypesCtrl.Check(index, check_all)
 		self._update_file_type_choice_labels()
 		self._update_file_types_enabled()
@@ -288,7 +303,7 @@ class TextFinderSettingsPanel(SettingsPanel):
 		evt.Skip()
 
 	def _update_file_type_choice_labels(self):
-		for index, (label, _extensions) in enumerate(SUPPORTED_FILE_TYPES):
+		for index, (label, _extensions) in enumerate(self.fileTypeChoices):
 			self.fileTypesCtrl.SetString(index, file_type_choice_label(label, self.fileTypesCtrl.IsChecked(index)))
 
 	def _update_file_types_enabled(self):
@@ -301,7 +316,7 @@ class TextFinderSettingsPanel(SettingsPanel):
 		config.conf[CONFIG_SECTION]["showFullPath"] = self.showFullPathCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["searchAllFileTypes"] = self.searchAllFileTypesCtrl.GetValue()
 		chosen_extensions = []
-		for index, (_label, extensions) in enumerate(SUPPORTED_FILE_TYPES):
+		for index, (_label, extensions) in enumerate(self.fileTypeChoices):
 			if self.fileTypesCtrl.IsChecked(index):
 				chosen_extensions.extend(extensions)
 		config.conf[CONFIG_SECTION]["searchFileTypes"] = ";".join(chosen_extensions)
@@ -717,10 +732,11 @@ class TextFinderDialog(wx.Dialog):
 		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
 		self.searchButton = wx.Button(self, label=_("&Search"))
 		self.openFileButton = wx.Button(self, label=_("Open &File"))
+		self.goToResultButton = wx.Button(self, label=_("&Go to Search Result"))
 		self.openButton = wx.Button(self, label=_("&Open Result"))
 		self.statsButton = wx.Button(self, label=_("Search &Statistics"))
 		self.closeButton = wx.Button(self, wx.ID_CLOSE)
-		for button in (self.searchButton, self.openFileButton, self.openButton, self.statsButton, self.closeButton):
+		for button in (self.searchButton, self.openFileButton, self.goToResultButton, self.openButton, self.statsButton, self.closeButton):
 			buttonSizer.Add(button, 0, wx.ALL, 4)
 		mainSizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
 
@@ -729,9 +745,11 @@ class TextFinderDialog(wx.Dialog):
 
 		self.searchButton.Bind(wx.EVT_BUTTON, self.on_search)
 		self.openFileButton.Bind(wx.EVT_BUTTON, self.on_open_file_from_result)
+		self.goToResultButton.Bind(wx.EVT_BUTTON, self.on_go_to_result)
 		self.openButton.Bind(wx.EVT_BUTTON, self.on_open_result)
 		self.statsButton.Bind(wx.EVT_BUTTON, self.on_statistics)
 		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
+		self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
 		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_result)
@@ -775,6 +793,9 @@ class TextFinderDialog(wx.Dialog):
 
 	def on_query_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
+		if key_code == wx.WXK_ESCAPE:
+			self.Destroy()
+			return
 		if get_setting("allowDirectTabsAndLineBreaks") and key_code in (wx.WXK_TAB, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
 			character = "\t" if key_code == wx.WXK_TAB else "\n"
 			self.queryCtrl.WriteText(character)
@@ -803,6 +824,12 @@ class TextFinderDialog(wx.Dialog):
 			ui.message(_("space"))
 		else:
 			ui.message(_("{count} spaces").format(count=run))
+
+	def on_dialog_char_hook(self, evt):
+		if evt.GetKeyCode() == wx.WXK_ESCAPE:
+			self.Destroy()
+			return
+		evt.Skip()
 
 	def _run_search(self, options):
 		searcher = Searcher(self.target, options)
@@ -943,6 +970,9 @@ class TextFinderDialog(wx.Dialog):
 
 	def on_results_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
+		if key_code == wx.WXK_ESCAPE:
+			self.Destroy()
+			return
 		if key_code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
 			self.open_selected_result()
 			return
@@ -977,6 +1007,25 @@ class TextFinderDialog(wx.Dialog):
 			self.results[index] = updated_result
 			self.refresh_results_list()
 
+	def on_go_to_result(self, evt):
+		result = self.get_selected_result()
+		if result is None:
+			return
+		if result.path.suffix.lower() != ".docx":
+			ui.message(_("Go to Search Result is available for Word documents."))
+			return
+		try:
+			extracted_text = extract_text(result.path).text
+		except Exception:
+			log_exception("Text Finder could not extract DOCX text before going to result.")
+			ui.message(_("Could not get the Word result text."))
+			return
+		updated_result = go_to_word_result(result, extracted_text)
+		if updated_result is not None and updated_result != result:
+			index = self.resultsCtrl.GetSelection()
+			self.results[index] = updated_result
+			self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
+
 	def get_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
 		if index == wx.NOT_FOUND or index < 0 or index >= len(self.results):
@@ -1009,9 +1058,17 @@ class ResultLocationDialog(wx.Dialog):
 		sizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
 		self.SetSizer(sizer)
 		self.SetSize((900, 650))
+		self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+		self.textCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
 		openFileButton.Bind(wx.EVT_BUTTON, self.on_open_file)
 		closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
 		wx.CallAfter(self.focus_match)
+
+	def on_char_hook(self, evt):
+		if evt.GetKeyCode() == wx.WXK_ESCAPE:
+			self.Destroy()
+			return
+		evt.Skip()
 
 	def focus_match(self):
 		start = max(0, min(self.result.start, len(self.text)))
@@ -1087,7 +1144,7 @@ def open_word_document_read_only(word, path):
 	return word.Documents.Open(str(path), False, True, False)
 
 
-def get_open_word_visual_locations(path, results, extracted_text):
+def get_open_word_visual_locations(path, results, extracted_text, select_result=False):
 	requests = []
 	for index, result in enumerate(results):
 		matched_text = extracted_text[result.start:result.end]
@@ -1103,6 +1160,7 @@ def get_open_word_visual_locations(path, results, extracted_text):
 	payload = {
 		"fileName": Path(path).name,
 		"requests": requests,
+		"selectResult": bool(select_result),
 	}
 	payload_path = None
 	script_path = None
@@ -1195,7 +1253,9 @@ foreach ($request in $payload.requests) {
 	}
 	if ($foundCount -eq [int] $request.occurrence) {
 		$locations[[string] $request.index] = @($selection.Information(3), $selection.Information(10))
-		$selection.Collapse(0)
+		if (-not $payload.selectResult) {
+			$selection.Collapse(0)
+		}
 	}
 }
 $locations | ConvertTo-Json -Compress
@@ -1258,6 +1318,21 @@ def open_result_file(result, extracted_text=None):
 	return result
 
 
+def go_to_word_result(result, extracted_text):
+	try:
+		locations = get_open_word_visual_locations(result.path, [result], extracted_text, select_result=True)
+		if locations and 0 in locations:
+			page, visual_line = locations[0]
+			ui.message(_("Moved to page {page}, visual line {line}.").format(page=page, line=visual_line))
+			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
+		ui.message(_("Could not move to this result in the open Word document."))
+		return result
+	except Exception:
+		log_exception("Text Finder could not move to the Word result.")
+		ui.message(_("Could not move to this result in Word."))
+		return None
+
+
 def open_docx_result_in_word(result, extracted_text):
 	try:
 		locations = get_docx_visual_locations(result.path, [result], extracted_text)
@@ -1311,8 +1386,16 @@ class StatisticsDialog(wx.Dialog):
 		sizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
 		self.SetSizer(sizer)
 		self.SetSize((750, 500))
+		self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+		self.reportCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
 		copyButton.Bind(wx.EVT_BUTTON, self.on_copy)
 		closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
+
+	def on_char_hook(self, evt):
+		if evt.GetKeyCode() == wx.WXK_ESCAPE:
+			self.Destroy()
+			return
+		evt.Skip()
 
 	def on_copy(self, evt):
 		if wx.TheClipboard.Open():

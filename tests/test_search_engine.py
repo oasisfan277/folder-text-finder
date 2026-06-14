@@ -23,6 +23,7 @@ from addon.globalPlugins.textFinder import (
 	OPEN_WORD_LOCATION_SCRIPT,
 	word_file_name_from_object_name,
 	open_word_document_read_only,
+	ordered_supported_file_types,
 	normalize_search_folder,
 	normalize_search_target,
 	parse_extension_list,
@@ -80,6 +81,14 @@ def test_open_word_document_read_only_uses_read_only_flags():
 def test_open_word_location_script_uses_running_word_document():
 	assert "GetActiveObject('Word.Application')" in OPEN_WORD_LOCATION_SCRIPT
 	assert "$word.Documents.Count" in OPEN_WORD_LOCATION_SCRIPT
+	assert "selectResult" in OPEN_WORD_LOCATION_SCRIPT
+
+
+def test_selected_file_types_are_ordered_first_when_search_all_is_off():
+	ordered = ordered_supported_file_types(False, {".docx", ".pdf"})
+	assert ordered[0][0] == "Word documents (.docx)"
+	assert ordered[1][0] == "PDF documents (.pdf)"
+	assert ordered_supported_file_types(True, {".docx"})[0][0] == "Plain text and logs (.txt, .log)"
 
 
 def test_word_file_name_from_word_window_title():
