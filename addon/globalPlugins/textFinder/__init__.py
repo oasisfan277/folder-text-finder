@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import json
 import tempfile
@@ -362,7 +363,10 @@ def get_target_from_focused_object():
 			while obj and id(obj) not in seen:
 				seen.add(id(obj))
 				for attr in ("location", "value", "name"):
-					target = normalize_search_target(getattr(obj, attr, None))
+					value = getattr(obj, attr, None)
+					target = normalize_search_target(value)
+					if not target:
+						target = document_path_from_text(value, all_supported_extensions())
 					if target:
 						return target
 				obj = getattr(obj, "parent", None)
@@ -540,6 +544,9 @@ def get_open_pdf_document_target():
 		if target:
 			return target
 		return find_matching_file_in_shell_windows(document_name)
+	target = get_open_pdf_document_from_running_processes()
+	if target:
+		return target
 	return None
 
 
@@ -585,12 +592,84 @@ def notepad_document_from_command_line(command_line):
 
 
 def document_from_command_line(command_line, suffixes):
+	target = document_path_from_text(command_line, suffixes)
+	if target:
+		return target
 	for argument in split_windows_command_line(command_line)[1:]:
 		if argument.startswith(("/", "-")):
 			continue
 		target = normalize_search_target(argument)
 		if target and Path(target).suffix.lower() in suffixes:
 			return target
+	return None
+
+
+def get_open_pdf_document_from_running_processes():
+	try:
+		completed = subprocess.run(
+			[
+				powershell_executables()[0],
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				OPEN_PDF_PROCESS_SCAN_SCRIPT,
+			],
+			capture_output=True,
+			text=True,
+			timeout=4,
+			creationflags=get_hidden_process_flags(),
+		)
+		if completed.returncode != 0 or not completed.stdout.strip():
+			return None
+		items = json.loads(completed.stdout)
+		if isinstance(items, dict):
+			items = [items]
+		candidates = []
+		for item in items:
+			command_line = item.get("CommandLine", "") if isinstance(item, dict) else ""
+			target = document_from_command_line(command_line, (".pdf",))
+			if target and target not in candidates:
+				candidates.append(target)
+		if len(candidates) == 1:
+			return candidates[0]
+	except Exception:
+		log_exception("Text Finder could not scan running processes for open PDF files.")
+	return None
+
+
+OPEN_PDF_PROCESS_SCAN_SCRIPT = r'''
+$names = @('Acrobat.exe', 'AcroRd32.exe', 'ApplicationFrameHost.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe', 'SumatraPDF.exe')
+Get-CimInstance Win32_Process |
+	Where-Object { $names -contains $_.Name -and $_.CommandLine -and $_.CommandLine -match '(?i)(\.pdf|file:///)'} |
+	Sort-Object CreationDate -Descending |
+	Select-Object -Property ProcessId,Name,CommandLine |
+	ConvertTo-Json -Compress
+'''
+
+
+def document_path_from_text(text, suffixes):
+	if not text:
+		return None
+	value = str(text).strip()
+	for suffix in suffixes:
+		target = document_path_with_suffix_from_text(value, suffix)
+		if target:
+			return target
+	return None
+
+
+def document_path_with_suffix_from_text(text, suffix):
+	suffix = re.escape(suffix)
+	patterns = (
+		r"file:///[^\s\"']+" + suffix + r"(?:[#?][^\s\"']*)?",
+		r"[A-Za-z]:\\[^\r\n\"<>|?*]+" + suffix,
+	)
+	for pattern in patterns:
+		for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+			candidate = normalize_search_target(match.group(0))
+			if candidate:
+				return candidate
 	return None
 
 

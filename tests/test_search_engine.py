@@ -17,6 +17,7 @@ from addon.globalPlugins.textFinder.search_engine import (
 from addon.globalPlugins.textFinder import (
 	can_open_in_notepad,
 	document_file_name_from_object_name,
+	document_path_from_text,
 	document_from_command_line,
 	file_type_choice_label,
 	file_type_is_selected,
@@ -135,6 +136,22 @@ def test_pdf_document_from_command_line_finds_open_pdf_file():
 		path.write_text("placeholder", encoding="utf-8")
 		command_line = '"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" "{path}"'.format(path=path)
 		assert document_from_command_line(command_line, (".pdf",)) == str(path)
+
+
+def test_pdf_document_from_command_line_finds_file_url():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book with spaces.pdf"
+		path.write_text("placeholder", encoding="utf-8")
+		command_line = '"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" "{uri}#page=3"'.format(uri=path.as_uri())
+		assert document_from_command_line(command_line, (".pdf",)) == str(path)
+
+
+def test_document_path_from_text_finds_pdf_path_inside_accessible_text():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "get talking norwegian.pdf"
+		path.write_text("placeholder", encoding="utf-8")
+		text = "Chrome PDF viewer opened {path} in a tab".format(path=path)
+		assert document_path_from_text(text, (".pdf",)) == str(path)
 
 
 def test_document_file_name_from_browser_pdf_title():

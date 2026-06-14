@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -350,6 +351,9 @@ def extract_pptx(path: Path) -> ExtractedText:
 
 
 def extract_pdf(path: Path) -> ExtractedText:
+	vendor_path = Path(__file__).resolve().parent / "_vendor"
+	if vendor_path.exists() and str(vendor_path) not in sys.path:
+		sys.path.insert(0, str(vendor_path))
 	try:
 		from pypdf import PdfReader
 	except Exception as exc:
