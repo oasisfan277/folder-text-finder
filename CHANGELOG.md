@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.17
+
+- Reused an already-open Notepad window when jumping to a search result in a text file, opening Notepad only as a fallback.
+
 ## 0.3.16
 
 - Explicitly hid folder and open-result controls in the search dialog when searching inside a single file.

@@ -1476,7 +1476,7 @@ def can_open_in_notepad(path):
 def go_to_text_editor_result(result):
 	try:
 		threading.Thread(target=send_notepad_go_to_line, args=(result.path, result.line), daemon=True).start()
-		ui.message(_("Opened in Notepad at line {line}.").format(line=result.line))
+		ui.message(_("Moved in Notepad to line {line}.").format(line=result.line))
 		return result
 	except Exception:
 		log_exception("Text Finder could not open the result in Notepad.")
@@ -1512,8 +1512,22 @@ $path = @'
 __PATH_JSON__
 '@ | ConvertFrom-Json
 $line = __LINE__
-$process = Start-Process -FilePath "notepad.exe" -ArgumentList @($path) -PassThru
 $fileName = Split-Path -Path $path -Leaf
+$escapedPath = [System.Management.Automation.WildcardPattern]::Escape($path)
+$processInfo = Get-CimInstance Win32_Process -Filter "Name = 'notepad.exe'" -ErrorAction SilentlyContinue |
+	Where-Object { $_.CommandLine -and $_.CommandLine -like "*$escapedPath*" } |
+	Select-Object -First 1
+if ($processInfo) {
+	$process = Get-Process -Id $processInfo.ProcessId -ErrorAction SilentlyContinue
+} else {
+	$process = Get-Process -Name notepad -ErrorAction SilentlyContinue |
+		Where-Object { $_.MainWindowTitle -like "*$fileName*" } |
+		Sort-Object StartTime -Descending |
+		Select-Object -First 1
+}
+if (-not $process) {
+	$process = Start-Process -FilePath "notepad.exe" -ArgumentList @($path) -PassThru
+}
 $deadline = (Get-Date).AddSeconds(5)
 $activated = $false
 do {

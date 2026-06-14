@@ -29,6 +29,7 @@ from addon.globalPlugins.textFinder import (
 	normalize_search_folder,
 	normalize_search_target,
 	notepad_document_from_command_line,
+	NOTEPAD_GO_TO_LINE_SCRIPT,
 	parse_extension_list,
 	path_from_shell_location_url,
 	pdf_page_uri,
@@ -117,6 +118,13 @@ def test_notepad_document_from_command_line_rejects_binary_file():
 		path.write_bytes(b"not text")
 		command_line = '"C:\\Windows\\System32\\notepad.exe" "{path}"'.format(path=path)
 		assert notepad_document_from_command_line(command_line) is None
+
+
+def test_notepad_jump_script_reuses_existing_window_before_opening_new_one():
+	command_lookup = NOTEPAD_GO_TO_LINE_SCRIPT.find("Get-CimInstance Win32_Process")
+	start_process = NOTEPAD_GO_TO_LINE_SCRIPT.find("Start-Process")
+	assert command_lookup >= 0
+	assert start_process > command_lookup
 
 
 def test_word_active_document_path_uses_active_document():
