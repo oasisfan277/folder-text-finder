@@ -15,6 +15,7 @@ from addon.globalPlugins.textFinder.search_engine import (
 	preview_for_span,
 )
 from addon.globalPlugins.textFinder import (
+	can_open_in_notepad,
 	file_type_choice_label,
 	file_type_is_selected,
 	format_result_for_list,
@@ -29,6 +30,7 @@ from addon.globalPlugins.textFinder import (
 	normalize_search_target,
 	parse_extension_list,
 	path_from_shell_location_url,
+	pdf_page_uri,
 	render_invisible_text,
 )
 from addon.globalPlugins.textFinder.text_extractors import (
@@ -391,6 +393,22 @@ def test_single_file_statistics_report_unreadable_file():
 def test_word_visual_line_location_omits_column():
 	result = SearchResult(path=Path("book.docx"), line=12, column=0, preview="match", page=3, location_unit="Visual line")
 	assert result.format_location() == "Page 3, visual line 12"
+
+
+def test_can_open_in_notepad_accepts_text_editor_friendly_files():
+	assert can_open_in_notepad(Path("notes.txt"))
+	assert can_open_in_notepad(Path("page.html"))
+	assert can_open_in_notepad(Path("rich.rtf"))
+	assert not can_open_in_notepad(Path("song.mp3"))
+	assert not can_open_in_notepad(Path("image.png"))
+
+
+def test_pdf_page_uri_adds_page_fragment():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book.pdf"
+		uri = pdf_page_uri(path, 7)
+		assert uri.startswith("file:///")
+		assert uri.endswith("book.pdf#page=7")
 
 
 def _write_zip(path: Path, members: dict[str, str]) -> None:

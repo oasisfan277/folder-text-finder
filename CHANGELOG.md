@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.14
+
+- Added Go to Search Result support for Notepad-friendly files and PDFs, and simplified the search dialog during single-file searches.
+
 ## 0.3.13
 
 - Simplified statistics for single-file searches and made search dialog shortcut keys unique.

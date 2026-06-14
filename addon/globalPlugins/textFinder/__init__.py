@@ -57,6 +57,7 @@ except ModuleNotFoundError:
 
 from .search_engine import SearchOptions, Searcher
 from .text_extractors import (
+	PLAIN_TEXT_EXTENSIONS,
 	SUPPORTED_FILE_TYPES,
 	TextExtractionError,
 	all_supported_extensions,
@@ -685,6 +686,9 @@ class TextFinderDialog(wx.Dialog):
 		self._build()
 		self.CentreOnScreen()
 
+	def is_file_search(self):
+		return Path(self.target).is_file()
+
 	def present(self):
 		self.Show()
 		self.Raise()
@@ -721,7 +725,8 @@ class TextFinderDialog(wx.Dialog):
 
 		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-		mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		if not self.is_file_search():
+			mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.reportPagesCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		# File types to search are chosen in the NVDA settings panel, not here.
 
@@ -736,7 +741,12 @@ class TextFinderDialog(wx.Dialog):
 		self.openButton = wx.Button(self, label=_("&Open Result"))
 		self.statsButton = wx.Button(self, label=_("Search Stat&istics"))
 		self.closeButton = wx.Button(self, wx.ID_CLOSE)
-		for button in (self.searchButton, self.openFileButton, self.goToResultButton, self.openButton, self.statsButton, self.closeButton):
+		buttons = [self.searchButton]
+		buttons.append(self.goToResultButton)
+		if not self.is_file_search():
+			buttons.extend([self.openFileButton, self.openButton])
+		buttons.extend([self.statsButton, self.closeButton])
+		for button in buttons:
 			buttonSizer.Add(button, 0, wx.ALL, 4)
 		mainSizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
 
@@ -752,7 +762,7 @@ class TextFinderDialog(wx.Dialog):
 		self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
-		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_result)
+		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_activate_result)
 		self.resultsCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_results_char_hook)
 
 	def on_search(self, evt):
@@ -767,7 +777,7 @@ class TextFinderDialog(wx.Dialog):
 			query=query,
 			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
-			include_subfolders=self.subfoldersCtrl.GetValue(),
+			include_subfolders=False if self.is_file_search() else self.subfoldersCtrl.GetValue(),
 			file_patterns=get_active_file_patterns(),
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
@@ -974,11 +984,20 @@ class TextFinderDialog(wx.Dialog):
 			self.Destroy()
 			return
 		if key_code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-			self.open_selected_result()
+			self.activate_selected_result()
 			return
 		evt.Skip()
 
 	def on_open_result(self, evt):
+		self.open_selected_result()
+
+	def on_activate_result(self, evt):
+		self.activate_selected_result()
+
+	def activate_selected_result(self):
+		if self.is_file_search():
+			self.go_to_selected_result()
+			return
 		self.open_selected_result()
 
 	def open_selected_result(self):
@@ -1008,11 +1027,18 @@ class TextFinderDialog(wx.Dialog):
 			self.refresh_results_list()
 
 	def on_go_to_result(self, evt):
+		self.go_to_selected_result()
+
+	def go_to_selected_result(self):
 		result = self.get_selected_result()
 		if result is None:
 			return
 		if result.path.suffix.lower() != ".docx":
-			ui.message(_("Go to Search Result is available for Word documents."))
+			updated_result = go_to_non_word_result(result)
+			if updated_result is not None and updated_result != result:
+				index = self.resultsCtrl.GetSelection()
+				self.results[index] = updated_result
+				self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
 			return
 		try:
 			extracted_text = extract_text(result.path).text
@@ -1331,6 +1357,84 @@ def go_to_word_result(result, extracted_text):
 		log_exception("Text Finder could not move to the Word result.")
 		ui.message(_("Could not move to this result in Word."))
 		return None
+
+
+def go_to_non_word_result(result):
+	extension = result.path.suffix.lower()
+	if extension == ".pdf":
+		return go_to_pdf_result(result)
+	if can_open_in_notepad(result.path):
+		return go_to_text_editor_result(result)
+	ui.message(_("Go to Search Result is not available for this file type."))
+	return result
+
+
+def can_open_in_notepad(path):
+	return path.suffix.lower() in PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}
+
+
+def go_to_text_editor_result(result):
+	try:
+		process = subprocess.Popen(["notepad.exe", str(result.path)])
+		threading.Thread(target=send_notepad_go_to_line, args=(process.pid, result.line), daemon=True).start()
+		ui.message(_("Opened in Notepad at line {line}.").format(line=result.line))
+		return result
+	except Exception:
+		log_exception("Text Finder could not open the result in Notepad.")
+		ui.message(_("Could not open this result in Notepad."))
+		return None
+
+
+def send_notepad_go_to_line(process_id, line):
+	try:
+		subprocess.run(
+			[
+				powershell_executables()[0],
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				NOTEPAD_GO_TO_LINE_SCRIPT.format(process_id=int(process_id), line=int(line)),
+			],
+			capture_output=True,
+			text=True,
+			timeout=8,
+			creationflags=get_hidden_process_flags(),
+		)
+	except Exception:
+		log_exception("Text Finder could not send the Notepad go to line command.")
+
+
+NOTEPAD_GO_TO_LINE_SCRIPT = r'''
+Start-Sleep -Milliseconds 700
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName Microsoft.VisualBasic
+[Microsoft.VisualBasic.Interaction]::AppActivate({process_id}) | Out-Null
+Start-Sleep -Milliseconds 150
+[System.Windows.Forms.SendKeys]::SendWait("^g")
+Start-Sleep -Milliseconds 150
+[System.Windows.Forms.SendKeys]::SendWait("{line}")
+[System.Windows.Forms.SendKeys]::SendWait("{{ENTER}}")
+'''
+
+
+def go_to_pdf_result(result):
+	try:
+		if result.page is not None:
+			os.startfile(pdf_page_uri(result.path, result.page))
+			ui.message(_("Opened PDF at page {page}.").format(page=result.page))
+		else:
+			os.startfile(str(result.path))
+			ui.message(_("Opened PDF. Page information was not available."))
+		return result
+	except Exception:
+		log_exception("Text Finder could not open the PDF result.")
+		ui.message(_("Could not open this PDF result."))
+		return None
+
+
+def pdf_page_uri(path, page):
+	return Path(path).resolve().as_uri() + "#page={page}".format(page=page)
 
 
 def open_docx_result_in_word(result, extracted_text):
