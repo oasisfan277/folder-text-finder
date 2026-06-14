@@ -7,6 +7,7 @@ from addon.globalPlugins.textFinder import text_extractors as text_extractors_mo
 from addon.globalPlugins.textFinder.search_engine import (
 	SearchOptions,
 	SearchResult,
+	SearchStatistics,
 	Searcher,
 	find_matches,
 	line_column_for_offset,
@@ -363,6 +364,29 @@ def test_text_result_location_uses_line_label():
 	text = "First line\nSecond line with cat"
 	result = list(find_matches(Path("book.txt"), ExtractedText(text), SearchOptions(query="cat")))[0]
 	assert result.format_location() == "Line 2, Column 18"
+
+
+def test_single_file_statistics_omit_folder_counts():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book.docx"
+		path.write_text("placeholder", encoding="utf-8")
+		statistics = SearchStatistics(path, SearchOptions(query="cat"), matches_found=3)
+		report = statistics.to_report()
+		assert statistics.summary_message() == "Search complete. 3 matches found in this file."
+		assert "Search file:" in report
+		assert "Include subfolders" not in report
+		assert "Supported files searched" not in report
+		assert "Files containing matches" not in report
+
+
+def test_single_file_statistics_report_unreadable_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book.docx"
+		path.write_text("placeholder", encoding="utf-8")
+		statistics = SearchStatistics(path, SearchOptions(query="cat"))
+		statistics.unreadable_files.append((path, "Permission denied"))
+		assert statistics.summary_message() == "Search complete. This file could not be read."
+
 
 def test_word_visual_line_location_omits_column():
 	result = SearchResult(path=Path("book.docx"), line=12, column=0, preview="match", page=3, location_unit="Visual line")

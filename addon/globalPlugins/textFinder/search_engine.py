@@ -60,7 +60,20 @@ class SearchStatistics:
 	no_extractable_text_files: list[tuple[Path, str]] = field(default_factory=list)
 	unreadable_files: list[tuple[Path, str]] = field(default_factory=list)
 
+	def is_single_file_search(self) -> bool:
+		return self.folder.is_file()
+
 	def summary_message(self) -> str:
+		if self.is_single_file_search():
+			if self.matches_found:
+				return f"Search complete. {self.matches_found} matches found in this file."
+			if self.unreadable_files:
+				return "Search complete. This file could not be read."
+			if self.no_extractable_text_files:
+				return "Search complete. This file contained no extractable text."
+			if self.unsupported_files:
+				return "Search complete. This file type is not supported."
+			return "Search complete. No matches found in this file."
 		if self.matches_found:
 			start = f"Search complete. {self.matches_found} matches found in {len(self.files_with_matches)} files."
 		else:
@@ -73,6 +86,21 @@ class SearchStatistics:
 		)
 
 	def to_report(self) -> str:
+		if self.is_single_file_search():
+			lines = [
+				"Text Finder Statistics",
+				"",
+				f"Search file: {self.folder}",
+				f"Search mode: {'exact whole word' if self.options.whole_word else 'exact fragment'}",
+				f"Case sensitive: {'yes' if self.options.case_sensitive else 'no'}",
+				f"Search text length: {len(self.options.query)}",
+				f"Matches found: {self.matches_found}",
+				f"Total search duration: {self.duration:.2f} seconds",
+			]
+			self._append_file_section(lines, "Unsupported File", self.unsupported_files)
+			self._append_file_section(lines, "File Without Extractable Text", self.no_extractable_text_files)
+			self._append_file_section(lines, "Unreadable File", self.unreadable_files)
+			return "\n".join(lines)
 		lines = [
 			"Text Finder Statistics",
 			"",

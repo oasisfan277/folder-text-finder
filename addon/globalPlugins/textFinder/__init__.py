@@ -697,7 +697,7 @@ class TextFinderDialog(wx.Dialog):
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
 		mainSizer.Add(wx.StaticText(self, label=_("Search target: {target}").format(target=self.target)), 0, wx.ALL, 8)
 
-		mainSizer.Add(wx.StaticText(self, label=_("&Search text:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		mainSizer.Add(wx.StaticText(self, label=_("Search &text:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.queryCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_PROCESS_ENTER)
 		mainSizer.Add(self.queryCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 		mainSizer.Add(wx.StaticText(self, label=_("Search text &preview:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
@@ -714,9 +714,9 @@ class TextFinderDialog(wx.Dialog):
 		searchModeSizer.Add(self.exactWholeWordCtrl, 0, wx.ALL, 4)
 		self.caseCtrl = wx.CheckBox(self, label=_("&Case sensitive"))
 		self.caseCtrl.SetValue(get_setting("searchCaseSensitive"))
-		self.subfoldersCtrl = wx.CheckBox(self, label=_("Include &subfolders"))
+		self.subfoldersCtrl = wx.CheckBox(self, label=_("Include subfol&ders"))
 		self.subfoldersCtrl.SetValue(get_setting("searchIncludeSubfolders"))
-		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report &page numbers when available"))
+		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report page &numbers when available"))
 		self.reportPagesCtrl.SetValue(get_setting("reportPageNumbers"))
 
 		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
@@ -731,10 +731,10 @@ class TextFinderDialog(wx.Dialog):
 
 		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
 		self.searchButton = wx.Button(self, label=_("&Search"))
-		self.openFileButton = wx.Button(self, label=_("Open &File"))
+		self.openFileButton = wx.Button(self, label=_("Open Fi&le"))
 		self.goToResultButton = wx.Button(self, label=_("&Go to Search Result"))
 		self.openButton = wx.Button(self, label=_("&Open Result"))
-		self.statsButton = wx.Button(self, label=_("Search &Statistics"))
+		self.statsButton = wx.Button(self, label=_("Search Stat&istics"))
 		self.closeButton = wx.Button(self, wx.ID_CLOSE)
 		for button in (self.searchButton, self.openFileButton, self.goToResultButton, self.openButton, self.statsButton, self.closeButton):
 			buttonSizer.Add(button, 0, wx.ALL, 4)

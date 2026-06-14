@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.13
+
+- Simplified statistics for single-file searches and made search dialog shortcut keys unique.
+
 ## 0.3.12
 
 - Added Escape to close Text Finder windows, a Go to Search Result button for Word results, and moved selected file types to the top of the settings list when Search all supported file types is off.
