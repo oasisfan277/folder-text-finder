@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.21
+
+- Prioritized open document detection before folder fallback and made Escape close the main Text Finder dialog more consistently.
+
 ## 0.3.20
 
 - Bundled the PDF text reader and broadened open-PDF detection to find PDF paths from accessible text, file URLs, and running viewer process data.

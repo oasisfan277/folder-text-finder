@@ -340,10 +340,10 @@ class TextFinderSettingsPanel(SettingsPanel):
 		config.conf[CONFIG_SECTION]["searchFileTypes"] = ";".join(chosen_extensions)
 
 def get_current_search_target():
-	target = get_target_from_focused_object()
+	target = get_open_document_target()
 	if target:
 		return target
-	target = get_open_document_target()
+	target = get_target_from_focused_object()
 	if target:
 		return target
 	return get_foreground_explorer_target_from_shell()
@@ -496,6 +496,9 @@ def get_open_document_target():
 		target = get_office_active_document_target(office_app)
 		if target:
 			return target
+	target = get_open_pdf_document_target()
+	if target:
+		return target
 	return None
 
 
@@ -978,6 +981,8 @@ class TextFinderDialog(wx.Dialog):
 		self.statsButton.Bind(wx.EVT_BUTTON, self.on_statistics)
 		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
 		self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
+		self.Bind(wx.EVT_MENU, lambda evt: self.Destroy(), id=wx.ID_CLOSE)
+		self.SetAcceleratorTable(wx.AcceleratorTable([(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.ID_CLOSE)]))
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
 		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_activate_result)
